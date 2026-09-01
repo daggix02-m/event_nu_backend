@@ -35,6 +35,15 @@ func (h *AuthHandlers) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeAuthResponse(w, r, session)
+
+	// Fire-and-forget transactional emails (welcome + verification) via the
+	// outbox — these never block the response and the worker retries failures.
+	if err := h.app.Email.SendWelcome(r.Context(), session.User); err != nil {
+		h.app.Logger.Warn("welcome enqueue failed", "user_id", session.User.ID, "error", err.Error())
+	}
+	if _, err := h.app.Email.SendVerification(r.Context(), session.User); err != nil {
+		h.app.Logger.Warn("verification enqueue failed", "user_id", session.User.ID, "error", err.Error())
+	}
 }
 
 func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {

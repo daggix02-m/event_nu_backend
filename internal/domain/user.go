@@ -9,6 +9,19 @@ const (
 	RoleAdmin UserRole = "admin"
 )
 
+// EmailOutbox is a queued transactional email awaiting worker delivery.
+type EmailOutbox struct {
+	ID            string
+	RecipientEmail string
+	RecipientName  string
+	TemplateID     int
+	Params         map[string]any
+	Attempts       int
+	MaxAttempts    int
+	NextRetryAt    time.Time
+	IdempotencyKey string
+}
+
 type User struct {
 	ID           string
 	Email        string

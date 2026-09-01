@@ -16,17 +16,21 @@ type Application struct {
 	Config config.Config
 	DB     *pgxpool.Pool
 
-	Auth *service.AuthService
+	Auth  *service.AuthService
+	Email *service.EmailService
 }
 
 func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Application {
 	users := repository.NewUserRepository(pool)
 	sessions := repository.NewSessionRepository(pool)
+	outbox := repository.NewOutboxRepository(pool)
+	codes := repository.NewEmailCodeRepository(pool)
 
 	return &Application{
 		Logger: logger,
 		Config: cfg,
 		DB:     pool,
 		Auth:   service.NewAuthService(users, sessions, cfg),
+		Email:  service.NewEmailService(outbox, codes, users, cfg),
 	}
 }

@@ -9,11 +9,14 @@ import (
 
 	"github.com/daggix02-m/event_nu/backend/internal/config"
 	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
+	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/email"
+	"github.com/daggix02-m/event_nu/backend/internal/repository"
+	"github.com/daggix02-m/event_nu/backend/internal/worker"
 	"github.com/joho/godotenv"
 )
 
-// The worker runs background consumers (email outbox in Step 5, media and
-// jobs later). It shares config and the database with the API.
+// The worker runs background consumers (email outbox now; media and jobs
+// later). It shares config and the database with the API.
 func main() {
 	_ = godotenv.Load()
 
@@ -35,8 +38,22 @@ func main() {
 	}
 	defer pool.Close()
 
-	logger.Info("worker starting")
-	<-ctx.Done()
+	var sender email.Sender
+	switch cfg.EmailProvider {
+	case "brevo":
+		sender = email.NewBrevoClient(cfg.BrevoAPIKey, cfg.BrevoAPIBase, cfg.BrevoSenderName, cfg.BrevoAPISender, cfg.BrevoSenderEmail)
+	default:
+		sender = email.NewNoopSender(logger)
+	}
+
+	outbox := repository.NewOutboxRepository(pool)
+	consumer := worker.NewEmailConsumer(logger, cfg, outbox, sender)
+
+	logger.Info("worker starting", "email_provider", cfg.EmailProvider)
+	if err := consumer.Run(ctx); err != nil {
+		logger.Error("consumer error", "error", err.Error())
+		os.Exit(1)
+	}
 	logger.Info("worker stopped")
 }
 

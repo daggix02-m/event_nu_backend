@@ -26,9 +26,17 @@ type Config struct {
 	BrevoSenderEmail string
 	BrevoAPISender   string
 	BrevoSenderName  string
+	BrevoAPIBase     string
+	APIPublicBase    string
 
 	BrevoTemplateWelcome int
 	BrevoTemplateVerify  int
+
+	// Worker / email consumer tuning.
+	EmailPollInterval   time.Duration
+	EmailBatchSize      int
+	EmailMaxAttempts    int
+	EmailRetryBaseDelay time.Duration
 }
 
 // parseDuration supports Go durations ("15m", "1h") plus day suffixes ("30d").
@@ -82,6 +90,21 @@ func Load() (Config, error) {
 	cfg.BrevoSenderEmail = getEnv("BREVO_SENDER_EMAIL", "event.nua@gmail.com")
 	cfg.BrevoAPISender = getEnv("BREVO_API_SENDER", "")
 	cfg.BrevoSenderName = getEnv("BREVO_SENDER_NAME", "Event Nu")
+	cfg.BrevoAPIBase = getEnv("BREVO_API_BASE", "https://api.brevo.com")
+	cfg.APIPublicBase = getEnv("API_PUBLIC_BASE", "http://localhost:8080")
+
+	if cfg.EmailPollInterval, err = parseDuration(getEnv("EMAIL_POLL_INTERVAL", "2s")); err != nil {
+		return Config{}, fmt.Errorf("EMAIL_POLL_INTERVAL: %w", err)
+	}
+	if cfg.EmailBatchSize, err = strconv.Atoi(getEnv("EMAIL_BATCH_SIZE", "20")); err != nil {
+		return Config{}, fmt.Errorf("EMAIL_BATCH_SIZE must be an integer: %w", err)
+	}
+	if cfg.EmailMaxAttempts, err = strconv.Atoi(getEnv("EMAIL_MAX_ATTEMPTS", "3")); err != nil {
+		return Config{}, fmt.Errorf("EMAIL_MAX_ATTEMPTS must be an integer: %w", err)
+	}
+	if cfg.EmailRetryBaseDelay, err = parseDuration(getEnv("EMAIL_RETRY_BASE_DELAY", "30s")); err != nil {
+		return Config{}, fmt.Errorf("EMAIL_RETRY_BASE_DELAY: %w", err)
+	}
 
 	if cfg.BrevoTemplateWelcome, err = strconv.Atoi(getEnv("BREVO_TEMPLATE_WELCOME", "0")); err != nil {
 		return Config{}, fmt.Errorf("BREVO_TEMPLATE_WELCOME must be an integer: %w", err)

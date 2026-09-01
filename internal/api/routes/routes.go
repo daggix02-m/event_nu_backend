@@ -22,6 +22,10 @@ func New(app *api.Application) http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/refresh", auth.Refresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", auth.Logout)
 
+	email := handlers.NewEmailHandlers(app)
+	mux.HandleFunc("POST /api/v1/auth/verify", email.VerifyPOST)
+	mux.HandleFunc("GET /api/v1/auth/verify", email.VerifyGET)
+
 	// Protected route group.
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /api/v1/users/me", auth.Me)
