@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
 	"github.com/daggix02-m/event_nu/backend/internal/shared"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,9 +20,15 @@ func NewEmailCodeRepository(pool *pgxpool.Pool) *EmailCodeRepository {
 	return &EmailCodeRepository{pool: pool}
 }
 
+// q returns the request transaction (honoring RLS context) when active,
+// otherwise the pool.
+func (r *EmailCodeRepository) q(ctx context.Context) database.Querier {
+	return database.QuerierFromContext(ctx, r.pool)
+}
+
 // Create stores a one-time code by hash.
 func (r *EmailCodeRepository) Create(ctx context.Context, userID, purpose, codeHash string, expiresAt time.Time, maxAttempts int) error {
-	_, err := r.pool.Exec(ctx, `
+	_, err := r.q(ctx).Exec(ctx, `
 		INSERT INTO email_codes (user_id, purpose, code_hash, expires_at, max_attempts)
 		VALUES ($1, $2, $3, $4, $5)`,
 		userID, purpose, codeHash, expiresAt, maxAttempts)
@@ -35,11 +42,13 @@ func (r *EmailCodeRepository) Create(ctx context.Context, userID, purpose, codeH
 // and returns whether the code was valid. On success the row is consumed.
 // Returns a typed error for invalid/expired/exhausted cases.
 func (r *EmailCodeRepository) Consume(ctx context.Context, codeHash, purpose string) (string, error) {
-	tx, err := r.pool.Begin(ctx)
+	tx, isNew, err := database.Tx(ctx, r.pool)
 	if err != nil {
 		return "", fmt.Errorf("begin code tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	if isNew {
+		defer tx.Rollback(ctx)
+	}
 
 	var userID string
 	var attempts, maxAttempts int
@@ -76,8 +85,10 @@ func (r *EmailCodeRepository) Consume(ctx context.Context, codeHash, purpose str
 		return "", fmt.Errorf("update email_code: %w", err)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return "", fmt.Errorf("commit email_code: %w", err)
+	if isNew {
+		if err := tx.Commit(ctx); err != nil {
+			return "", fmt.Errorf("commit email_code: %w", err)
+		}
 	}
 	return userID, nil
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/daggix02-m/event_nu/backend/internal/domain"
+	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -18,6 +19,12 @@ func NewOutboxRepository(pool *pgxpool.Pool) *OutboxRepository {
 	return &OutboxRepository{pool: pool}
 }
 
+// q returns the request transaction (honoring RLS context) when active,
+// otherwise the pool.
+func (r *OutboxRepository) q(ctx context.Context) database.Querier {
+	return database.QuerierFromContext(ctx, r.pool)
+}
+
 // Create enqueues an email. Handlers INSERT and return — the worker owns the
 // actual send. idempotencyKey is optional (empty for fire-and-forget emails).
 func (r *OutboxRepository) Create(ctx context.Context, m domain.EmailOutbox) error {
@@ -25,7 +32,7 @@ func (r *OutboxRepository) Create(ctx context.Context, m domain.EmailOutbox) err
 	if err != nil {
 		return fmt.Errorf("marshal outbox params: %w", err)
 	}
-	_, err = r.pool.Exec(ctx, `
+	_, err = r.q(ctx).Exec(ctx, `
 		INSERT INTO email_outbox
 			(recipient_email, recipient_name, template_id, params, max_attempts, idempotency_key)
 		VALUES ($1, $2, $3, $4, $5, $6)
@@ -41,7 +48,7 @@ func (r *OutboxRepository) Create(ctx context.Context, m domain.EmailOutbox) err
 // concurrent workers. Rows are leased via next_retry_at so a crash mid-send
 // re-queues them after the lease expires.
 func (r *OutboxRepository) ClaimBatch(ctx context.Context, batchSize int, lease time.Duration) ([]domain.EmailOutbox, error) {
-	rows, err := r.pool.Query(ctx, `
+	rows, err := r.q(ctx).Query(ctx, `
 		UPDATE email_outbox
 		SET next_retry_at = now() + $2, updated_at = now()
 		WHERE id IN (

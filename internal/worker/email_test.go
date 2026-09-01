@@ -49,7 +49,7 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	if dsn == "" {
 		t.Skip("DATABASE_URL not set — skipping worker integration tests")
 	}
-	pool, err := database.NewPool(context.Background(), dsn)
+	pool, err := database.NewPoolWithRole(context.Background(), dsn, "service")
 	if err != nil {
 		t.Skipf("database unreachable (%v) — skipping worker integration tests", err)
 	}
@@ -99,6 +99,12 @@ func (f *fakeBrevo) handler() http.HandlerFunc {
 }
 
 func testConsumer(t *testing.T, pool *pgxpool.Pool, cfg config.Config, sender email.Sender) *EmailConsumer {
+	// Isolation: purge any rows left by prior runs against the shared dev DB.
+	for _, tbl := range []string{"email_logs", "email_outbox", "email_codes"} {
+		if _, err := pool.Exec(context.Background(), "DELETE FROM "+tbl); err != nil {
+			t.Fatalf("purge %s: %v", tbl, err)
+		}
+	}
 	return NewEmailConsumer(testLogger(), cfg, repository.NewOutboxRepository(pool), sender)
 }
 

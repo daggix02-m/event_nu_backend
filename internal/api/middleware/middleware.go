@@ -47,12 +47,16 @@ func RequestID(next http.Handler) http.Handler {
 
 type responseRecorder struct {
 	http.ResponseWriter
-	status int
+	status      int
+	WroteHeader bool
 }
 
 func (rr *responseRecorder) WriteHeader(status int) {
-	rr.status = status
-	rr.ResponseWriter.WriteHeader(status)
+	if !rr.WroteHeader {
+		rr.WroteHeader = true
+		rr.status = status
+		rr.ResponseWriter.WriteHeader(status)
+	}
 }
 
 // LogRequest records one structured log line per request with duration,

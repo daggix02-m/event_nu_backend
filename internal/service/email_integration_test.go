@@ -37,7 +37,8 @@ func emailTestPool(t *testing.T) *pgxpool.Pool {
 	if dsn == "" {
 		t.Skip("DATABASE_URL not set — skipping email integration tests")
 	}
-	pool, err := database.NewPool(context.Background(), dsn)
+	// Verification/redemption flows run under the trusted 'service' role.
+	pool, err := database.NewPoolWithRole(context.Background(), dsn, "service")
 	if err != nil {
 		t.Skipf("database unreachable (%v)", err)
 	}
@@ -47,6 +48,12 @@ func emailTestPool(t *testing.T) *pgxpool.Pool {
 
 func emailService(t *testing.T, pool *pgxpool.Pool, templates map[string]int) *EmailService {
 	t.Helper()
+	// Isolation: purge rows left by prior runs against the shared dev DB.
+	for _, tbl := range []string{"email_logs", "email_outbox", "email_codes"} {
+		if _, err := pool.Exec(context.Background(), "DELETE FROM "+tbl); err != nil {
+			t.Fatalf("purge %s: %v", tbl, err)
+		}
+	}
 	cfg := config.Config{
 		APIPublicBase:    "http://localhost:8080",
 		EmailMaxAttempts: 3,

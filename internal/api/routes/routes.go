@@ -17,19 +17,25 @@ func New(app *api.Application) http.Handler {
 	mux.HandleFunc("GET /readyz", handlers.Readyz(app))
 
 	auth := handlers.NewAuthHandlers(app, app.Auth)
-	mux.HandleFunc("POST /api/v1/auth/register", auth.Register)
-	mux.HandleFunc("POST /api/v1/auth/login", auth.Login)
-	mux.HandleFunc("POST /api/v1/auth/refresh", auth.Refresh)
-	mux.HandleFunc("POST /api/v1/auth/logout", auth.Logout)
-
 	email := handlers.NewEmailHandlers(app)
-	mux.HandleFunc("POST /api/v1/auth/verify", email.VerifyPOST)
-	mux.HandleFunc("GET /api/v1/auth/verify", email.VerifyGET)
 
-	// Protected route group.
-	protected := http.NewServeMux()
-	protected.HandleFunc("GET /api/v1/users/me", auth.Me)
-	mux.Handle("GET /api/v1/users/me", middleware.RequireAuth(app.Auth)(protected))
+	// Public/auth-critical routes run under the trusted 'service' role so RLS
+	// allows login/registration (identity does not exist yet at that point).
+	service := func(h http.HandlerFunc) http.Handler {
+		return middleware.WithRole("service")(middleware.SetRLS(h))
+	}
+	mux.Handle("POST /api/v1/auth/register", service(auth.Register))
+	mux.Handle("POST /api/v1/auth/login", service(auth.Login))
+	mux.Handle("POST /api/v1/auth/refresh", service(auth.Refresh))
+	mux.Handle("POST /api/v1/auth/logout", service(auth.Logout))
+	mux.Handle("POST /api/v1/auth/verify", service(email.VerifyPOST))
+	mux.Handle("GET /api/v1/auth/verify", service(email.VerifyGET))
+
+	// Protected routes: authenticate, then apply RLS as the authenticated user.
+	protected := func(h http.HandlerFunc) http.Handler {
+		return middleware.RequireAuth(app.Auth)(middleware.SetRLS(h))
+	}
+	mux.Handle("GET /api/v1/users/me", protected(auth.Me))
 
 	allowed := make(map[string]struct{}, len(app.Config.CORSAllowedOrigins))
 	for _, o := range app.Config.CORSAllowedOrigins {
@@ -41,7 +47,9 @@ func New(app *api.Application) http.Handler {
 			middleware.CORS(allowed)(
 				middleware.SecureHeaders(
 					middleware.RequestID(
-						middleware.LogRequest(app.Logger)(mux),
+						middleware.LogRequest(app.Logger)(
+							middleware.BeginRequestTx(app.DB, app.Logger)(mux),
+						),
 					),
 				),
 			),
