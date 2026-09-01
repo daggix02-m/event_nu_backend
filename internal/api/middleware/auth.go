@@ -15,23 +15,49 @@ const UserIDKey contextKey = "user_id"
 func RequireAuth(auth *service.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			header := r.Header.Get("Authorization")
-			if !strings.HasPrefix(header, "Bearer ") {
-				writeAuthError(w)
+			userID, _, ok := parseToken(w, r, auth)
+			if !ok {
 				return
 			}
-
-			token := strings.TrimPrefix(header, "Bearer ")
-			userID, err := auth.ParseAccessToken(token)
-			if err != nil {
-				writeAuthError(w)
-				return
-			}
-
 			ctx := context.WithValue(r.Context(), UserIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// RequireAdmin validates the Bearer token and requires the admin role.
+// Admin business actions stay in Go (they trigger side effects + audits).
+func RequireAdmin(auth *service.AuthService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID, role, ok := parseToken(w, r, auth)
+			if !ok {
+				return
+			}
+			if role != "admin" {
+				writeForbidden(w)
+				return
+			}
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func parseToken(w http.ResponseWriter, r *http.Request, auth *service.AuthService) (string, string, bool) {
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
+		writeAuthError(w)
+		return "", "", false
+	}
+
+	token := strings.TrimPrefix(header, "Bearer ")
+	userID, role, err := auth.ParseAccessToken(token)
+	if err != nil {
+		writeAuthError(w)
+		return "", "", false
+	}
+	return userID, role, true
 }
 
 // UserID returns the authenticated user ID from the context, or "".
@@ -44,4 +70,10 @@ func writeAuthError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
 	_, _ = w.Write([]byte(`{"error":{"code":"unauthorized","message":"Authentication required."}}`))
+}
+
+func writeForbidden(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = w.Write([]byte(`{"error":{"code":"forbidden","message":"Insufficient permissions."}}`))
 }

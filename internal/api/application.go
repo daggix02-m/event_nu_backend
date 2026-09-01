@@ -18,6 +18,8 @@ type Application struct {
 
 	Auth  *service.AuthService
 	Email *service.EmailService
+	Org   *service.OrganizerService
+	Event *service.EventService
 }
 
 func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Application {
@@ -25,6 +27,10 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 	sessions := repository.NewSessionRepository(pool)
 	outbox := repository.NewOutboxRepository(pool)
 	codes := repository.NewEmailCodeRepository(pool)
+	orgs := repository.NewOrganizerRepository(pool)
+	venues := repository.NewVenueRepository(pool)
+	cats := repository.NewCategoryRepository(pool)
+	events := repository.NewEventRepository(pool)
 
 	return &Application{
 		Logger: logger,
@@ -32,5 +38,7 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		DB:     pool,
 		Auth:   service.NewAuthService(users, sessions, cfg),
 		Email:  service.NewEmailService(outbox, codes, users, cfg),
+		Org:    service.NewOrganizerService(orgs),
+		Event:  service.NewEventService(events, venues, cats, orgs),
 	}
 }

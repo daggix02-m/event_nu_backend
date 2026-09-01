@@ -39,12 +39,15 @@ func TestParseAccessTokenRoundTrip(t *testing.T) {
 		t.Fatalf("sign: %v", err)
 	}
 
-	sub, err := s.ParseAccessToken(token)
+	sub, role, err := s.ParseAccessToken(token)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	if sub != "u-123" {
 		t.Fatalf("expected subject u-123, got %q", sub)
+	}
+	if role != "user" {
+		t.Fatalf("expected role user, got %q", role)
 	}
 }
 
@@ -57,7 +60,7 @@ func TestParseAccessTokenRejectsExpired(t *testing.T) {
 		t.Fatalf("sign: %v", err)
 	}
 
-	if _, err := s.ParseAccessToken(token); err == nil {
+	if _, _, err := s.ParseAccessToken(token); err == nil {
 		t.Fatal("expected expired token to be rejected")
 	}
 }
@@ -72,7 +75,7 @@ func TestParseAccessTokenRejectsWrongSecret(t *testing.T) {
 	}
 
 	other := &AuthService{config: config.Config{JWTSecret: "different", JWTExpiry: 15 * time.Minute}}
-	if _, err := other.ParseAccessToken(token); err == nil {
+	if _, _, err := other.ParseAccessToken(token); err == nil {
 		t.Fatal("expected token signed with different secret to be rejected")
 	}
 }

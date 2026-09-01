@@ -182,11 +182,12 @@ func (s *AuthService) newSession(ctx context.Context, user *domain.User, userAge
 
 // signAccessToken mints a signed JWT with sub (user id), role, and jti (session id).
 func (s *AuthService) signAccessToken(user *domain.User, expiresAt time.Time) (string, error) {
-	claims := jwt.RegisteredClaims{
-		Subject:   user.ID,
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
-		ExpiresAt: jwt.NewNumericDate(expiresAt),
-		ID:        newUUID(),
+	claims := jwt.MapClaims{
+		"sub":  user.ID,
+		"role": string(user.Role),
+		"iat":  jwt.NewNumericDate(time.Now()),
+		"exp":  jwt.NewNumericDate(expiresAt),
+		"jti":  newUUID(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(s.config.JWTSecret))
@@ -196,8 +197,8 @@ func (s *AuthService) signAccessToken(user *domain.User, expiresAt time.Time) (s
 	return signed, nil
 }
 
-// ParseAccessToken validates a JWT and returns its subject (user id).
-func (s *AuthService) ParseAccessToken(tokenString string) (string, error) {
+// ParseAccessToken validates a JWT and returns its subject (user id) and role.
+func (s *AuthService) ParseAccessToken(tokenString string) (string, string, error) {
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
@@ -205,17 +206,18 @@ func (s *AuthService) ParseAccessToken(tokenString string) (string, error) {
 		return []byte(s.config.JWTSecret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || !token.Valid {
-		return "", fmt.Errorf("invalid token claims")
+		return "", "", fmt.Errorf("invalid token claims")
 	}
 	sub, _ := claims.GetSubject()
 	if sub == "" {
-		return "", fmt.Errorf("token missing subject")
+		return "", "", fmt.Errorf("token missing subject")
 	}
-	return sub, nil
+	role, _ := claims["role"].(string)
+	return sub, role, nil
 }
 
 func generateRefreshToken() (string, error) {
