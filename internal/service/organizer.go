@@ -44,10 +44,11 @@ func (s *OrganizerService) Apply(ctx context.Context, userID, requestedName, req
 	}
 
 	app := &domain.OrganizerApplication{
-		UserID:        userID,
-		RequestedName: strings.TrimSpace(requestedName),
-		RequestedSlug: slugify(firstNonEmpty(requestedSlug, requestedName)),
-		Bio:           bio,
+		UserID:         userID,
+		RequestedName:  strings.TrimSpace(requestedName),
+		RequestedSlug:  slugify(firstNonEmpty(requestedSlug, requestedName)),
+		Bio:            bio,
+		Status:         "pending",
 		SupportingData: map[string]any{},
 	}
 	if err := s.orgs.CreateApplication(ctx, app); err != nil {
