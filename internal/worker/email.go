@@ -84,8 +84,10 @@ func (c *EmailConsumer) sendOne(ctx context.Context, item domain.EmailOutbox) er
 		return c.outbox.MarkFailed(ctx, item.ID, err.Error(), attempt, item.MaxAttempts, next)
 	}
 
+	// Permanent failure or exhausted retries: dead-letter immediately by
+	// counting the attempt as terminal (status -> 'failed').
 	c.logger.Error("email dead-lettered", "outbox_id", item.ID, "attempt", attempt, "error", err.Error())
-	return c.outbox.MarkFailed(ctx, item.ID, err.Error(), attempt, item.MaxAttempts, time.Now())
+	return c.outbox.MarkFailed(ctx, item.ID, err.Error(), item.MaxAttempts, item.MaxAttempts, time.Now())
 }
 
 func min(a, b int) int {
