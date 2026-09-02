@@ -41,10 +41,10 @@ func TestLoadRequiresJWTSecret(t *testing.T) {
 
 func TestLoadBrevoProviderRequiresKey(t *testing.T) {
 	setEnv(t, map[string]string{
-		"DATABASE_URL":   "postgres://localhost/db",
-		"JWT_SECRET":     "secret",
-		"EMAIL_PROVIDER": "brevo",
-		"BREVO_API_KEY":  "",
+		"DATABASE_URL":     "postgres://localhost/db",
+		"JWT_SECRET":       "secret",
+		"EMAIL_PROVIDER":   "brevo",
+		"BREVO_API_KEY":    "",
 		"BREVO_API_SENDER": "sender@example.com",
 	})
 	_, err := Load()
@@ -53,14 +53,52 @@ func TestLoadBrevoProviderRequiresKey(t *testing.T) {
 	}
 }
 
+func TestLoadBrevoRequiresTemplates(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		welcome  string
+		verify   string
+		wantErr  string
+	}{
+		{name: "missing both", provider: "brevo", wantErr: "BREVO_TEMPLATE_WELCOME"},
+		{name: "missing verify", provider: "brevo", welcome: "3", wantErr: "BREVO_TEMPLATE_VERIFY"},
+		{name: "all set ok", provider: "brevo", welcome: "3", verify: "4"},
+		{name: "noop ignores missing templates", provider: "noop"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setEnv(t, map[string]string{
+				"DATABASE_URL":           "postgres://localhost/db",
+				"JWT_SECRET":             "secret",
+				"EMAIL_PROVIDER":         tt.provider,
+				"BREVO_API_KEY":          "key",
+				"BREVO_API_SENDER":       "sender@example.com",
+				"BREVO_TEMPLATE_WELCOME": tt.welcome,
+				"BREVO_TEMPLATE_VERIFY":  tt.verify,
+			})
+			_, err := Load()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestLoadValid(t *testing.T) {
 	setEnv(t, map[string]string{
-		"DATABASE_URL":        "postgres://localhost/db",
-		"JWT_SECRET":          "secret",
-		"EMAIL_PROVIDER":      "noop",
+		"DATABASE_URL":           "postgres://localhost/db",
+		"JWT_SECRET":             "secret",
+		"EMAIL_PROVIDER":         "noop",
 		"BREVO_TEMPLATE_WELCOME": "12",
-		"JWT_EXPIRY":          "15m",
-		"REFRESH_TOKEN_EXPIRY": "30d",
+		"JWT_EXPIRY":             "15m",
+		"REFRESH_TOKEN_EXPIRY":   "30d",
 	})
 	cfg, err := Load()
 	if err != nil {

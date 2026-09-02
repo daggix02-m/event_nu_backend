@@ -119,6 +119,12 @@ func Load() (Config, error) {
 	if cfg.EmailProvider == "brevo" && cfg.BrevoAPISender == "" {
 		return Config{}, fmt.Errorf("EMAIL_PROVIDER=brevo requires BREVO_API_SENDER")
 	}
+	if cfg.EmailProvider == "brevo" && cfg.BrevoTemplateWelcome <= 0 {
+		return Config{}, fmt.Errorf("EMAIL_PROVIDER=brevo requires BREVO_TEMPLATE_WELCOME > 0")
+	}
+	if cfg.EmailProvider == "brevo" && cfg.BrevoTemplateVerify <= 0 {
+		return Config{}, fmt.Errorf("EMAIL_PROVIDER=brevo requires BREVO_TEMPLATE_VERIFY > 0")
+	}
 
 	return cfg, nil
 }
