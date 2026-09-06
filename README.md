@@ -46,6 +46,50 @@ export DATABASE_URL="postgres://app_user:...@localhost:5432/event_nu?sslmode=req
 make test
 ```
 
+## CI quality gates (phase-01)
+
+`.github/workflows/ci.yml` enforces the same gates as local development —
+`gofmt -l`, `go vet`, `go build`, `go test -race -p 1 -count=1 ./...` — against
+a **Postgres 16 service** so the integration/RLS tests actually run (they
+`t.Skip` when `DATABASE_URL` is unset or unreachable, which is fine locally but
+would make CI useless).
+
+How CI provisions the database:
+
+1. Boots `postgres:16` with `event_nu_test` as the database.
+2. As the `postgres` superuser, creates the **`app_user` login role** and grants
+   `CONNECT` on the database + `USAGE` on `public`. It also sets
+   `ALTER DEFAULT PRIVILEGES` so every table/sequence the migrations create is
+   automatically granted to `app_user`.
+3. Runs the goose migrations with `DATABASE_ADMIN_URL` (superuser). Migration
+   `00007` `GRANT`s organizer/venue/event tables to `app_user` directly.
+
+Why `app_user` must be non-superuser: RLS is bypassed for superusers, so the
+cross-user-block proof tests (`internal/repository/user_rls_test.go`,
+`internal/infrastructure/database/rls_test.go`) would silently pass for the
+wrong reason. The full auth/RLS matrix only means something when every test runs
+as `app_user`. The worker's trusted paths run as `app_user` with the `service`
+RLS role preset — no extra role membership is needed.
+
+Run the same gates locally against your own Postgres (Docker works):
+
+```sh
+docker run --name eventnu-ci-pg -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=event_nu_test -p 5433:5432 -d postgres:16
+
+export DATABASE_ADMIN_URL="postgres://postgres:postgres@localhost:5433/event_nu_test?sslmode=disable"
+export DATABASE_URL="postgres://app_user:app_user_pass@localhost:5433/event_nu_test?sslmode=disable"
+psql "$DATABASE_ADMIN_URL" <<'SQL'
+CREATE ROLE app_user LOGIN PASSWORD 'app_user_pass';
+GRANT CONNECT ON DATABASE event_nu_test TO app_user;
+GRANT USAGE ON SCHEMA public TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO app_user;
+SQL
+make migrate-up
+make ci
+```
+
 ## Configuration
 
 `.env` lives at the repo root (`/home/daggi/Projects/event_nu_mobile/.env`),
