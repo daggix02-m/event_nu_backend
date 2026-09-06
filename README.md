@@ -109,11 +109,26 @@ above the `backend/` git root. See `.env.example` for the template.
 | `BREVO_SENDER_NAME` | Display name (default `Event Nu`) |
 | `BREVO_TEMPLATE_WELCOME`, `BREVO_TEMPLATE_VERIFY` | Transactional template IDs (3 and 4) |
 | `API_PUBLIC_BASE` | Base URL used to build the verify link (default `http://localhost:8080`) |
+| `AUTH_LOGIN_RATE_LIMIT`, `AUTH_LOGIN_RATE_WINDOW` | Login attempts per IP/account (default `20`/`5m`) |
+| `AUTH_REGISTER_RATE_LIMIT`, `AUTH_REGISTER_RATE_WINDOW` | Register per IP/account (default `5`/`1h`) |
+| `AUTH_REFRESH_RATE_LIMIT`, `AUTH_REFRESH_RATE_WINDOW` | Refresh per IP (default `30`/`5m`) |
+| `AUTH_VERIFY_RATE_LIMIT`, `AUTH_VERIFY_RATE_WINDOW` | Verify per IP (default `20`/`1h`) |
 | `EMAIL_POLL_INTERVAL`, `EMAIL_BATCH_SIZE`, `EMAIL_MAX_ATTEMPTS`, `EMAIL_RETRY_BASE_DELAY` | Outbox worker tuning |
 
 `EMAIL_PROVIDER=brevo` requires `BREVO_API_KEY`, `BREVO_API_SENDER`, and both
 template IDs (`> 0`); startup aborts otherwise instead of silently skipping
 sends.
+
+### Auth rate limiting
+
+Login/register/refresh/verify are rate-limited in-process with a fixed-window
+limiter (`internal/api/middleware/ratelimit.go`). The API is a **single
+instance**, so in-memory state is intentional — no Redis until the topology
+changes. IP is keyed from `X-Forwarded-For` (first value) else `RemoteAddr`;
+login and register additionally key the normalized body email (lower-cased), so
+distributed credential stuffing still trips a per-account 429. Every 429 is a
+generic `too_many_requests` with a `Retry-After` header and reveals nothing
+about account existence.
 
 ## Run
 

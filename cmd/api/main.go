@@ -40,6 +40,7 @@ func main() {
 	defer pool.Close()
 
 	app := api.NewApp(logger, cfg, pool)
+	defer app.RateLimiter.Stop()
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

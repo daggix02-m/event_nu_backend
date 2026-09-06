@@ -68,6 +68,7 @@ func newTestApp(t *testing.T) (*api.Application, http.Handler) {
 	}
 
 	app := api.NewApp(testLogger(), cfg, pool)
+	t.Cleanup(app.RateLimiter.Stop)
 	return app, routes.New(app)
 }
 
@@ -297,5 +298,94 @@ func TestRegisterBoundaryValidation(t *testing.T) {
 	rec = doJSON(t, h, http.MethodPost, "/api/v1/auth/register", "", "")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("empty body: expected 400, got %d", rec.Code)
+	}
+}
+
+// TestAuthLoginRateLimitIP proves the IP bucket trips independently of the
+// account: burst logins from one IP across distinct accounts yield a 429 with a
+// generic body and a Retry-After header.
+func TestAuthLoginRateLimitIP(t *testing.T) {
+	t.Setenv("AUTH_LOGIN_RATE_LIMIT", "3")
+	t.Setenv("AUTH_LOGIN_RATE_WINDOW", "5m")
+	_, h := newTestApp(t)
+
+	for i := 0; i < 3; i++ {
+		email := fmt.Sprintf("rl-ip-%d-%d@test.example", i, time.Now().UnixNano())
+		rec := doJSON(t, h, http.MethodPost, "/api/v1/auth/login",
+			fmt.Sprintf(`{"email":%q,"password":"wrongpass123"}`, email), "")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("login %d: expected 401, got %d: %s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+
+	rec := doJSON(t, h, http.MethodPost, "/api/v1/auth/login",
+		`{"email":"overflow@test.example","password":"wrongpass123"}`, "")
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 on the 4th attempt, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header on the 429")
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "too_many_requests") {
+		t.Fatalf("expected generic too_many_requests body, got %s", body)
+	}
+	// The 429 must not reveal that overflow@test.example has no account.
+	if strings.Contains(body, "overflow@test.example") || strings.Contains(body, "invalid_credentials") {
+		t.Fatalf("429 body leaks account info: %s", body)
+	}
+}
+
+// TestAuthLoginRateLimitAccount proves the account bucket independently guards
+// one email: repeated logins for the same account from fresh IPs still trip.
+func TestAuthLoginRateLimitAccount(t *testing.T) {
+	t.Setenv("AUTH_LOGIN_RATE_LIMIT", "3")
+	t.Setenv("AUTH_LOGIN_RATE_WINDOW", "5m")
+	_, h := newTestApp(t)
+
+	email := fmt.Sprintf("rl-acct-%d@test.example", time.Now().UnixNano())
+	for i := 0; i < 3; i++ {
+		rec := doJSON(t, h, http.MethodPost, "/api/v1/auth/login",
+			fmt.Sprintf(`{"email":%q,"password":"wrongpass123"}`, email), "")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("login %d: expected 401, got %d: %s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login",
+		strings.NewReader(fmt.Sprintf(`{"email":%q,"password":"wrongpass123"}`, email)))
+	req.Header.Set("X-Forwarded-For", "198.51.100.77")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 from the account bucket on a fresh IP, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header on the 429")
+	}
+}
+
+// TestAuthVerifyRateLimit proves the verify route is IP-rate-limited too.
+func TestAuthVerifyRateLimit(t *testing.T) {
+	t.Setenv("AUTH_VERIFY_RATE_LIMIT", "3")
+	t.Setenv("AUTH_VERIFY_RATE_WINDOW", "1h")
+	_, h := newTestApp(t)
+
+	for i := 0; i < 3; i++ {
+		rec := doJSON(t, h, http.MethodPost, "/api/v1/auth/verify", `{"code":"000000"}`, "")
+		if rec.Code == http.StatusTooManyRequests {
+			t.Fatalf("verify attempt %d: unexpected 429", i+1)
+		}
+	}
+	rec := doJSON(t, h, http.MethodPost, "/api/v1/auth/verify", `{"code":"000000"}`, "")
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 on the 4th verify, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header on the 429")
+	}
+	if !strings.Contains(rec.Body.String(), "too_many_requests") {
+		t.Fatalf("expected generic too_many_requests body, got %s", rec.Body.String())
 	}
 }

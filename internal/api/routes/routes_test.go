@@ -62,6 +62,7 @@ func newTestHandler(t *testing.T) http.Handler {
 	}
 
 	app := api.NewApp(testLogger(), cfg, pool)
+	t.Cleanup(app.RateLimiter.Stop)
 	return routes.New(app)
 }
 

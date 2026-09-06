@@ -21,6 +21,19 @@ type Config struct {
 
 	CORSAllowedOrigins []string
 
+	// Authentication rate limits. In-memory fixed-window limiters — the API is
+	// a single instance, so this is intentional (see middleware/ratelimit.go).
+	// Each limit/window pair guards both the IP bucket and, for login and
+	// register, the account bucket.
+	AuthLoginLimit     int
+	AuthLoginWindow    time.Duration
+	AuthRegisterLimit  int
+	AuthRegisterWindow time.Duration
+	AuthRefreshLimit   int
+	AuthRefreshWindow  time.Duration
+	AuthVerifyLimit    int
+	AuthVerifyWindow   time.Duration
+
 	EmailProvider    string
 	BrevoAPIKey      string
 	BrevoSenderEmail string
@@ -79,6 +92,31 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("REFRESH_TOKEN_EXPIRY: %w", err)
 	}
 
+	if cfg.AuthLoginLimit, err = strconv.Atoi(getEnv("AUTH_LOGIN_RATE_LIMIT", "20")); err != nil {
+		return Config{}, fmt.Errorf("AUTH_LOGIN_RATE_LIMIT must be an integer: %w", err)
+	}
+	if cfg.AuthLoginWindow, err = parseDuration(getEnv("AUTH_LOGIN_RATE_WINDOW", "5m")); err != nil {
+		return Config{}, fmt.Errorf("AUTH_LOGIN_RATE_WINDOW: %w", err)
+	}
+	if cfg.AuthRegisterLimit, err = strconv.Atoi(getEnv("AUTH_REGISTER_RATE_LIMIT", "5")); err != nil {
+		return Config{}, fmt.Errorf("AUTH_REGISTER_RATE_LIMIT must be an integer: %w", err)
+	}
+	if cfg.AuthRegisterWindow, err = parseDuration(getEnv("AUTH_REGISTER_RATE_WINDOW", "1h")); err != nil {
+		return Config{}, fmt.Errorf("AUTH_REGISTER_RATE_WINDOW: %w", err)
+	}
+	if cfg.AuthRefreshLimit, err = strconv.Atoi(getEnv("AUTH_REFRESH_RATE_LIMIT", "30")); err != nil {
+		return Config{}, fmt.Errorf("AUTH_REFRESH_RATE_LIMIT must be an integer: %w", err)
+	}
+	if cfg.AuthRefreshWindow, err = parseDuration(getEnv("AUTH_REFRESH_RATE_WINDOW", "5m")); err != nil {
+		return Config{}, fmt.Errorf("AUTH_REFRESH_RATE_WINDOW: %w", err)
+	}
+	if cfg.AuthVerifyLimit, err = strconv.Atoi(getEnv("AUTH_VERIFY_RATE_LIMIT", "20")); err != nil {
+		return Config{}, fmt.Errorf("AUTH_VERIFY_RATE_LIMIT must be an integer: %w", err)
+	}
+	if cfg.AuthVerifyWindow, err = parseDuration(getEnv("AUTH_VERIFY_RATE_WINDOW", "1h")); err != nil {
+		return Config{}, fmt.Errorf("AUTH_VERIFY_RATE_WINDOW: %w", err)
+	}
+
 	for _, o := range strings.Split(getEnv("CORS_ALLOWED_ORIGINS", ""), ",") {
 		if o = strings.TrimSpace(o); o != "" {
 			cfg.CORSAllowedOrigins = append(cfg.CORSAllowedOrigins, o)
@@ -124,6 +162,24 @@ func Load() (Config, error) {
 	}
 	if cfg.EmailProvider == "brevo" && cfg.BrevoTemplateVerify <= 0 {
 		return Config{}, fmt.Errorf("EMAIL_PROVIDER=brevo requires BREVO_TEMPLATE_VERIFY > 0")
+	}
+
+	for _, rl := range []struct {
+		limit  int
+		window time.Duration
+		name   string
+	}{
+		{cfg.AuthLoginLimit, cfg.AuthLoginWindow, "AUTH_LOGIN"},
+		{cfg.AuthRegisterLimit, cfg.AuthRegisterWindow, "AUTH_REGISTER"},
+		{cfg.AuthRefreshLimit, cfg.AuthRefreshWindow, "AUTH_REFRESH"},
+		{cfg.AuthVerifyLimit, cfg.AuthVerifyWindow, "AUTH_VERIFY"},
+	} {
+		if rl.limit <= 0 {
+			return Config{}, fmt.Errorf("%s_RATE_LIMIT must be > 0", rl.name)
+		}
+		if rl.window <= 0 {
+			return Config{}, fmt.Errorf("%s_RATE_WINDOW must be > 0", rl.name)
+		}
 	}
 
 	return cfg, nil

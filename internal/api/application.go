@@ -3,6 +3,7 @@ package api
 import (
 	"log/slog"
 
+	"github.com/daggix02-m/event_nu/backend/internal/api/middleware"
 	"github.com/daggix02-m/event_nu/backend/internal/config"
 	"github.com/daggix02-m/event_nu/backend/internal/repository"
 	"github.com/daggix02-m/event_nu/backend/internal/service"
@@ -15,6 +16,10 @@ type Application struct {
 	Logger *slog.Logger
 	Config config.Config
 	DB     *pgxpool.Pool
+
+	// RateLimiter is the shared in-memory fixed-window limiter for the auth
+	// endpoints. Created per app instance so tests get isolated state.
+	RateLimiter *middleware.Limiter
 
 	Auth  *service.AuthService
 	Email *service.EmailService
@@ -33,12 +38,13 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 	events := repository.NewEventRepository(pool)
 
 	return &Application{
-		Logger: logger,
-		Config: cfg,
-		DB:     pool,
-		Auth:   service.NewAuthService(users, sessions, cfg),
-		Email:  service.NewEmailService(outbox, codes, users, cfg),
-		Org:    service.NewOrganizerService(orgs),
-		Event:  service.NewEventService(events, venues, cats, orgs),
+		Logger:      logger,
+		Config:      cfg,
+		DB:          pool,
+		RateLimiter: middleware.NewLimiter(),
+		Auth:        service.NewAuthService(users, sessions, cfg),
+		Email:       service.NewEmailService(outbox, codes, users, cfg),
+		Org:         service.NewOrganizerService(orgs),
+		Event:       service.NewEventService(events, venues, cats, orgs),
 	}
 }
