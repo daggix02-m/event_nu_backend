@@ -25,6 +25,11 @@ type Application struct {
 	Email *service.EmailService
 	Org   *service.OrganizerService
 	Event *service.EventService
+
+	// Idempotency backs the client-retryable write middleware. Repositories
+	// read the request tx from context, so records share the guarded write's
+	// transaction (a rollback undoes the record too).
+	Idempotency *repository.IdempotencyRepository
 }
 
 func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Application {
@@ -46,5 +51,6 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Email:       service.NewEmailService(outbox, codes, users, cfg),
 		Org:         service.NewOrganizerService(orgs),
 		Event:       service.NewEventService(events, venues, cats, orgs),
+		Idempotency: repository.NewIdempotencyRepository(pool),
 	}
 }

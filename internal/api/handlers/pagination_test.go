@@ -152,7 +152,11 @@ func TestPaginationEventsStableOrder(t *testing.T) {
 		if !resp.Pagination.HasNext {
 			break
 		}
-		if page > 20 {
+		// Termination cap derived from the stable total returned by the first
+		// page: the shared dev DB accumulates published events across every
+		// run, so a hard-coded page limit would trip once enough rows exist.
+		// No writes happen inside this walk, so total is stable throughout.
+		if page > resp.Pagination.Total/resp.Pagination.Limit+2 {
 			t.Fatal("pagination did not terminate")
 		}
 	}

@@ -63,11 +63,19 @@ func New(app *api.Application) http.Handler {
 	protected := func(h http.HandlerFunc) http.Handler {
 		return middleware.RequireAuth(app.Auth)(middleware.SetRLS(h))
 	}
+	// Client-retryable writes: authenticate, apply RLS, then record the
+	// Idempotency-Key (spec §22). Runs inside BeginRequestTx — the stored record
+	// shares the request transaction, so a failed write rolls the record back.
+	protectedIdem := func(h http.HandlerFunc) http.Handler {
+		return middleware.RequireAuth(app.Auth)(
+			middleware.SetRLS(
+				middleware.Idempotency(app.Idempotency)(h)))
+	}
 	mux.Handle("GET /api/v1/users/me", protected(auth.Me))
-	mux.Handle("POST /api/v1/organizer-applications", protected(org.Apply))
+	mux.Handle("POST /api/v1/organizer-applications", protectedIdem(org.Apply))
 	mux.Handle("GET /api/v1/organizer-applications/me", protected(org.GetMyApplication))
-	mux.Handle("POST /api/v1/venues", protected(events.CreateVenue))
-	mux.Handle("POST /api/v1/events", protected(events.CreateEvent))
+	mux.Handle("POST /api/v1/venues", protectedIdem(events.CreateVenue))
+	mux.Handle("POST /api/v1/events", protectedIdem(events.CreateEvent))
 	mux.Handle("PATCH /api/v1/events/{id}", protected(events.UpdateEvent))
 	mux.Handle("POST /api/v1/events/{id}/publish", protected(events.Publish))
 
