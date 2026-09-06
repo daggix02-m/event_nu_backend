@@ -55,8 +55,8 @@ func emailService(t *testing.T, pool *pgxpool.Pool, templates map[string]int) *E
 		}
 	}
 	cfg := config.Config{
-		APIPublicBase:    "http://localhost:8080",
-		EmailMaxAttempts: 3,
+		APIPublicBase:        "http://localhost:8080",
+		EmailMaxAttempts:     3,
 		BrevoTemplateWelcome: templates["welcome"],
 		BrevoTemplateVerify:  templates["verify"],
 	}

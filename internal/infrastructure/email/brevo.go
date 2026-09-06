@@ -40,11 +40,11 @@ func NewBrevoClient(apiKey, baseURL, senderName, senderEmail, replyToEmail strin
 }
 
 type sendPayload struct {
-	Sender    senderRef   `json:"sender"`
-	ReplyTo   senderRef   `json:"replyTo,omitempty"`
-	To        []senderRef `json:"to"`
-	TemplateID int        `json:"templateId"`
-	Params    any         `json:"params,omitempty"`
+	Sender     senderRef   `json:"sender"`
+	ReplyTo    senderRef   `json:"replyTo,omitempty"`
+	To         []senderRef `json:"to"`
+	TemplateID int         `json:"templateId"`
+	Params     any         `json:"params,omitempty"`
 }
 
 type senderRef struct {

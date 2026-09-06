@@ -58,8 +58,8 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 }
 
 type fakeBrevo struct {
-	mu      sync.Mutex
-	calls   int
+	mu       sync.Mutex
+	calls    int
 	statuses []int
 	payloads []sendPayload
 }
@@ -257,7 +257,7 @@ func TestWorkerDeadLettersOnPermanentFailure(t *testing.T) {
 }
 
 type sendPayload struct {
-	Sender     struct {
+	Sender struct {
 		Name  string `json:"name"`
 		Email string `json:"email"`
 	} `json:"sender"`

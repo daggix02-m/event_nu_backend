@@ -28,7 +28,9 @@ func errBadTime(field string) error {
 
 type fieldError struct{ field string }
 
-func (e *fieldError) Error() string { return "body contains incorrect JSON type for field \"" + e.field + "\"" }
+func (e *fieldError) Error() string {
+	return "body contains incorrect JSON type for field \"" + e.field + "\""
+}
 
 func NewEventHandlers(app *api.Application, event *service.EventService) *EventHandlers {
 	return &EventHandlers{app: app, event: event}

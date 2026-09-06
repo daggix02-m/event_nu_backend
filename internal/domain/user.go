@@ -11,7 +11,7 @@ const (
 
 // EmailOutbox is a queued transactional email awaiting worker delivery.
 type EmailOutbox struct {
-	ID            string
+	ID             string
 	RecipientEmail string
 	RecipientName  string
 	TemplateID     int
@@ -38,14 +38,14 @@ type User struct {
 }
 
 type Session struct {
-	ID         string
-	UserID     string
+	ID          string
+	UserID      string
 	RefreshHash string
-	UserAgent  string
-	IPHash     string
-	DeviceName string
-	ExpiresAt  time.Time
-	RevokedAt  *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	UserAgent   string
+	IPHash      string
+	DeviceName  string
+	ExpiresAt   time.Time
+	RevokedAt   *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }

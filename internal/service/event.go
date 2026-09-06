@@ -12,10 +12,10 @@ import (
 )
 
 type EventService struct {
-	events  *repository.EventRepository
-	venues  *repository.VenueRepository
-	cats    *repository.CategoryRepository
-	orgs    *repository.OrganizerRepository
+	events *repository.EventRepository
+	venues *repository.VenueRepository
+	cats   *repository.CategoryRepository
+	orgs   *repository.OrganizerRepository
 }
 
 func NewEventService(events *repository.EventRepository, venues *repository.VenueRepository, cats *repository.CategoryRepository, orgs *repository.OrganizerRepository) *EventService {

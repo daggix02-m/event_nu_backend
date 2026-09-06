@@ -68,7 +68,7 @@ func New(app *api.Application) http.Handler {
 	}
 
 	return middleware.RecoverPanic(app.Logger)(
-		middleware.RequestTimeout(15*time.Second)(
+		middleware.RequestTimeout(15 * time.Second)(
 			middleware.CORS(allowed)(
 				middleware.SecureHeaders(
 					middleware.RequestID(

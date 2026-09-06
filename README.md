@@ -21,9 +21,30 @@ migrations     SQL migrations (goose)
 
 ## Requirements
 
-- Go 1.22+
+- Go **1.26.6** exactly — matches `go.mod`; other 1.26.x toolchains should work,
+  but the pinned version is used in CI. Verify with `go version`.
 - PostgreSQL (Neon) — `DATABASE_URL` under the `app_user` role (RLS-guarded)
 - Brevo free account with transactional access enabled
+
+## Running integration tests
+
+`go test -race -p 1 ./...` (via `make test`) runs unit tests plus the
+PostgreSQL-backed integration tests for auth, organizers, events, pagination,
+idempotency, and the worker.
+
+- Tests connect with `DATABASE_URL` (the non-superuser `app_user` role — a
+  superuser would bypass RLS and the cross-user-block tests would fail).
+- `-p 1` is required: packages share one database and must not run in parallel.
+- When `DATABASE_URL` is not set (or unreachable), the DB-backed tests `t.Skip`
+  and the suite still passes — a skipped test is not the same as a green DB test,
+  so CI always runs against a real Postgres service (see the CI workflow).
+
+Local workflow:
+
+```sh
+export DATABASE_URL="postgres://app_user:...@localhost:5432/event_nu?sslmode=require"
+make test
+```
 
 ## Configuration
 

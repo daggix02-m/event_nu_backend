@@ -18,10 +18,10 @@ import (
 // EmailService owns code generation and outbox enqueueing. Sending itself is
 // done by the worker; handlers never block on an external email call.
 type EmailService struct {
-	outbox    *repository.OutboxRepository
-	codes     *repository.EmailCodeRepository
-	users     *repository.UserRepository
-	config    config.Config
+	outbox *repository.OutboxRepository
+	codes  *repository.EmailCodeRepository
+	users  *repository.UserRepository
+	config config.Config
 }
 
 func NewEmailService(outbox *repository.OutboxRepository, codes *repository.EmailCodeRepository, users *repository.UserRepository, cfg config.Config) *EmailService {

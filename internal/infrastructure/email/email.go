@@ -4,10 +4,10 @@ import "context"
 
 // Message is a transactional email rendered by a Brevo dashboard template.
 type Message struct {
-	RecipientName string
+	RecipientName  string
 	RecipientEmail string
-	TemplateID    int
-	Params        map[string]any
+	TemplateID     int
+	Params         map[string]any
 }
 
 // Sender sends a templated transactional email. The interface exists because
