@@ -113,6 +113,7 @@ above the `backend/` git root. See `.env.example` for the template.
 | `AUTH_REGISTER_RATE_LIMIT`, `AUTH_REGISTER_RATE_WINDOW` | Register per IP/account (default `5`/`1h`) |
 | `AUTH_REFRESH_RATE_LIMIT`, `AUTH_REFRESH_RATE_WINDOW` | Refresh per IP (default `30`/`5m`) |
 | `AUTH_VERIFY_RATE_LIMIT`, `AUTH_VERIFY_RATE_WINDOW` | Verify per IP (default `20`/`1h`) |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated origin allowlist (default empty = same-origin) |
 | `EMAIL_POLL_INTERVAL`, `EMAIL_BATCH_SIZE`, `EMAIL_MAX_ATTEMPTS`, `EMAIL_RETRY_BASE_DELAY` | Outbox worker tuning |
 
 `EMAIL_PROVIDER=brevo` requires `BREVO_API_KEY`, `BREVO_API_SENDER`, and both

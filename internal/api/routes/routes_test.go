@@ -1,6 +1,7 @@
 package routes_test
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"net/http"
@@ -73,6 +74,13 @@ func doReq(t *testing.T, h http.Handler, method, path, body string) *httptest.Re
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
+}
+
+// isJSONAppError reports whether body is our application error envelope
+// {"error":{...}} — the discriminator between a handler-level error (route is
+// registered) and Go's plain-text mux 404 (route is missing).
+func isJSONAppError(body []byte) bool {
+	return bytes.Contains(body, []byte(`"error"`)) && bytes.Contains(body, []byte(`"code"`))
 }
 
 func TestHealthzRoute(t *testing.T) {
@@ -170,16 +178,20 @@ func TestAuthAndPublicRoutesAreRegistered(t *testing.T) {
 		{http.MethodGet, "/api/v1/categories"},
 		{http.MethodGet, "/api/v1/events"},
 		// A well-formed but nonexistent UUID: its route is registered, so the
-		// request must reach the handler (a DB-backed 500 today) rather than
-		// the mux's default 404. Malformed ids are no longer usable here —
-		// they are a legitimate handler-level 404 now.
+		// request must reach the handler, which answers with the application's
+		// JSON 404 (not_found). Malformed ids also 404 at the handler. Either
+		// way the response must be a JSON app error — never Go's plain-text
+		// mux 404, which is what an unregistered route would produce.
 		{http.MethodGet, "/api/v1/events/9f5f0a2c-0000-0000-0000-000000000001"},
 	} {
 		rec := doReq(t, h, tc.method, tc.path, "")
-		// A registered route must never 404 — it falls through to handler/auth
-		// errors (400/401/...) or a DB-backed 500, regardless of the input.
-		if rec.Code == http.StatusNotFound {
-			t.Fatalf("%s %s: expected route to be registered, got 404", tc.method, tc.path)
+		// A registered route must never fall through to the mux 404 — the
+		// mux's plain-text 404 proves the route is missing, whereas handler
+		// errors (400/401/.../429) and handler-level JSON 404s prove it is
+		// registered. A JSON error body (ours is always {"error":{...}}) is
+		// the discriminator.
+		if rec.Code == http.StatusNotFound && !isJSONAppError(rec.Body.Bytes()) {
+			t.Fatalf("%s %s: expected route to be registered, got mux 404", tc.method, tc.path)
 		}
 	}
 }

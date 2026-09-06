@@ -31,7 +31,31 @@ func (app *Application) AppError(w http.ResponseWriter, r *http.Request, err err
 		shared.WriteErrorJSON(w, appErr.HTTPStatus, appErr.Code, appErr.Message)
 		return
 	}
+	// A bare sentinel escaping a service (e.g. repository ErrNotFound) still has
+	// a defined status: map it here so a well-formed but nonexistent resource
+	// returns 404/409 instead of surfacing as an internal 500.
+	if status := shared.StatusFor(err); status != http.StatusInternalServerError {
+		app.ClientError(w, r, status, sentinelCode(status), sentinelMessage(status))
+		return
+	}
 	app.ServerError(w, r, err)
+}
+
+// sentinelCode/Messages pair generic response details with StatusFor's mapped
+// statuses. The not-found message intentionally matches Application.NotFound so
+// malformed and missing resource ids stay indistinguishable.
+func sentinelCode(status int) string {
+	if status == http.StatusNotFound {
+		return "not_found"
+	}
+	return "conflict"
+}
+
+func sentinelMessage(status int) string {
+	if status == http.StatusNotFound {
+		return "cannot find resource"
+	}
+	return "the resource is in a conflicting state"
 }
 
 // NotFound writes the standard 404 body. Used when a resource id path
