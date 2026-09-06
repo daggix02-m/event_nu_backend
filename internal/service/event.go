@@ -57,8 +57,23 @@ func (s *EventService) CreateVenue(ctx context.Context, userID string, v *domain
 	return s.venues.Create(ctx, v)
 }
 
-func (s *EventService) ListVenues(ctx context.Context) ([]*domain.Venue, error) {
-	return s.venues.ListActive(ctx)
+// PageResult holds a page of items plus total count.
+type PageResult[T any] struct {
+	Items []T
+	Total int
+}
+
+func (s *EventService) ListVenues(ctx context.Context, page, limit int) (PageResult[*domain.Venue], error) {
+	offset := (page - 1) * limit
+	items, err := s.venues.ListActive(ctx, limit, offset)
+	if err != nil {
+		return PageResult[*domain.Venue]{}, err
+	}
+	total, err := s.venues.CountActive(ctx)
+	if err != nil {
+		return PageResult[*domain.Venue]{}, err
+	}
+	return PageResult[*domain.Venue]{Items: items, Total: total}, nil
 }
 
 func (s *EventService) ListCategories(ctx context.Context) ([]*domain.Category, error) {
@@ -133,8 +148,17 @@ func (s *EventService) GetEvent(ctx context.Context, id string) (*domain.Event, 
 	return s.events.GetByID(ctx, id)
 }
 
-func (s *EventService) ListEvents(ctx context.Context) ([]*domain.Event, error) {
-	return s.events.ListVisible(ctx)
+func (s *EventService) ListEvents(ctx context.Context, page, limit int) (PageResult[*domain.Event], error) {
+	offset := (page - 1) * limit
+	items, err := s.events.ListVisible(ctx, limit, offset)
+	if err != nil {
+		return PageResult[*domain.Event]{}, err
+	}
+	total, err := s.events.CountVisible(ctx)
+	if err != nil {
+		return PageResult[*domain.Event]{}, err
+	}
+	return PageResult[*domain.Event]{Items: items, Total: total}, nil
 }
 
 func validateEvent(e *domain.Event) error {

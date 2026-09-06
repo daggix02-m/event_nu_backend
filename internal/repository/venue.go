@@ -53,12 +53,13 @@ func (r *VenueRepository) GetByID(ctx context.Context, id string) (*domain.Venue
 		FROM venues WHERE id = $1 AND deleted_at IS NULL`, id))
 }
 
-func (r *VenueRepository) ListActive(ctx context.Context) ([]*domain.Venue, error) {
+func (r *VenueRepository) ListActive(ctx context.Context, limit, offset int) ([]*domain.Venue, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT `+venueColumns+`
 		FROM venues
 		WHERE status = 'active' AND deleted_at IS NULL
-		ORDER BY name`)
+		ORDER BY name, id
+		LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list venues: %w", err)
 	}
@@ -73,4 +74,16 @@ func (r *VenueRepository) ListActive(ctx context.Context) ([]*domain.Venue, erro
 		venues = append(venues, v)
 	}
 	return venues, rows.Err()
+}
+
+// CountActive returns the total number of active venues.
+func (r *VenueRepository) CountActive(ctx context.Context) (int, error) {
+	var total int
+	err := r.q(ctx).QueryRow(ctx, `
+		SELECT count(*) FROM venues
+		WHERE status = 'active' AND deleted_at IS NULL`).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("count venues: %w", err)
+	}
+	return total, nil
 }

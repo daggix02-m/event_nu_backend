@@ -60,6 +60,23 @@ func promoteToAdmin(t *testing.T, userID string) {
 	}
 }
 
+// demoteFromAdmin demotes a user back to 'user' using the trusted service role.
+func demoteFromAdmin(t *testing.T, userID string) {
+	t.Helper()
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Fatal("DATABASE_URL not set")
+	}
+	pool, err := database.NewPoolWithRole(context.Background(), dsn, "service")
+	if err != nil {
+		t.Fatalf("service pool: %v", err)
+	}
+	defer pool.Close()
+	if _, err := pool.Exec(context.Background(), `UPDATE users SET role = 'user' WHERE id = $1`, userID); err != nil {
+		t.Fatalf("demote from admin: %v", err)
+	}
+}
+
 func idFromCreate(t *testing.T, rec *httptest.ResponseRecorder, key string) string {
 	t.Helper()
 	if rec.Code != http.StatusCreated {
@@ -178,8 +195,10 @@ func TestOrganizerVenueEventSlice(t *testing.T) {
 		t.Fatalf("publish: expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	// Published event is publicly visible now.
-	rec = doJSON(t, h, http.MethodGet, "/api/v1/events", "", "")
+	// Published event is publicly visible now. Request a large page so the
+	// event is guaranteed on page 1 even when the shared dev DB holds many
+	// published events that sort before it.
+	rec = doJSON(t, h, http.MethodGet, "/api/v1/events?limit=100", "", "")
 	if rec.Code != http.StatusOK || !containsEventID(t, rec, eventID) {
 		t.Fatalf("published event must be visible: %d", rec.Code)
 	}
@@ -232,4 +251,87 @@ func containsEventID(t *testing.T, rec *httptest.ResponseRecorder, id string) bo
 		}
 	}
 	return false
+}
+
+// TestAdminStaleRoleRecheck proves that a demoted admin loses administrative
+// access immediately — the same old JWT that once carried "admin" is now
+// rejected on admin routes because RequireAdmin re-verifies the role from DB.
+func TestAdminStaleRoleRecheck(t *testing.T) {
+	_, h := newTestApp(t)
+
+	// Create an organizer application to approve.
+	_, orgTok, _ := registerAndToken(t, h, "orgsr")
+	orgName := fmt.Sprintf("Stale Role Org %d", time.Now().UnixNano()%1e6)
+	rec := doJSON(t, h, http.MethodPost, "/api/v1/organizer-applications",
+		fmt.Sprintf(`{"requested_name":%q,"bio":"test"}`, orgName), orgTok)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("apply: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	appID := idFromCreate(t, rec, "id")
+
+	// Register + promote + login → get a valid admin token.
+	adminEmail, _, adminID := registerAndToken(t, h, "stale")
+	promoteToAdmin(t, adminID)
+	rec = doJSON(t, h, http.MethodPost, "/api/v1/auth/login",
+		fmt.Sprintf(`{"email":%q,"password":"password123"}`, adminEmail), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin login: %d", rec.Code)
+	}
+	var adminResp tokenResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &adminResp); err != nil {
+		t.Fatalf("decode admin login: %v", err)
+	}
+	adminTok := adminResp.Data.AccessToken
+
+	// Approve succeeds while the user is still admin.
+	rec = doJSON(t, h, http.MethodPost, "/api/v1/admin/organizer-applications/"+appID+"/approve",
+		`{"notes":"approved"}`, adminTok)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin approve: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// --- Demote the admin in the database ---
+	demoteFromAdmin(t, adminID)
+
+	// The same old token is now rejected on admin routes (role rechecked
+	// server-side, not trusted from the JWT claim).
+	rec = doJSON(t, h, http.MethodPost, "/api/v1/organizer-applications",
+		fmt.Sprintf(`{"requested_name":%q,"bio":"again"}`, orgName+"-2"), orgTok)
+	otherAppID := idFromCreate(t, rec, "id")
+	rec = doJSON(t, h, http.MethodPost, "/api/v1/admin/organizer-applications/"+otherAppID+"/approve",
+		`{"notes":"too late"}`, adminTok)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("demoted admin old token: expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// A freshly minted post-demotion token also gets 403.
+	rec = doJSON(t, h, http.MethodPost, "/api/v1/auth/login",
+		fmt.Sprintf(`{"email":%q,"password":"password123"}`, adminEmail), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("post-demotion login: %d", rec.Code)
+	}
+	var freshResp tokenResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &freshResp); err != nil {
+		t.Fatalf("decode post-demotion login: %v", err)
+	}
+	rec = doJSON(t, h, http.MethodPost, "/api/v1/admin/organizer-applications/"+otherAppID+"/reject",
+		`{"notes":"nope"}`, freshResp.Data.AccessToken)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("demoted admin fresh token: expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Non-admin on an admin route still returns 403.
+	_, nonAdminTok, _ := registerAndToken(t, h, "plain2")
+	rec = doJSON(t, h, http.MethodPost, "/api/v1/admin/organizer-applications/"+otherAppID+"/reject",
+		`{"notes":""}`, nonAdminTok)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("non-admin approve: expected 403, got %d", rec.Code)
+	}
+
+	// Unauthenticated admin route is still 401.
+	rec = doJSON(t, h, http.MethodPost, "/api/v1/admin/organizer-applications/"+otherAppID+"/reject",
+		`{}`, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauth approve: expected 401, got %d", rec.Code)
+	}
 }

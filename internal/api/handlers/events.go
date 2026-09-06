@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/daggix02-m/event_nu/backend/internal/api"
@@ -59,16 +61,25 @@ func (h *EventHandlers) CreateVenue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *EventHandlers) ListVenues(w http.ResponseWriter, r *http.Request) {
-	venues, err := h.event.ListVenues(r.Context())
+	page, limit, ok := parsePagination(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.event.ListVenues(r.Context(), page, limit)
 	if err != nil {
 		h.app.AppError(w, r, err)
 		return
 	}
-	out := make([]dto.VenueDTO, 0, len(venues))
-	for _, v := range venues {
+	out := make([]dto.VenueDTO, 0, len(result.Items))
+	for _, v := range result.Items {
 		out = append(out, toVenueDTO(v))
 	}
-	shared.WriteJSON(w, http.StatusOK, out)
+	writePaginated(w, http.StatusOK, out, dto.PaginationMeta{
+		Page:    page,
+		Limit:   limit,
+		Total:   result.Total,
+		HasNext: page*limit < result.Total,
+	})
 }
 
 func (h *EventHandlers) ListCategories(w http.ResponseWriter, r *http.Request) {
@@ -131,16 +142,25 @@ func (h *EventHandlers) GetEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *EventHandlers) ListEvents(w http.ResponseWriter, r *http.Request) {
-	events, err := h.event.ListEvents(r.Context())
+	page, limit, ok := parsePagination(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.event.ListEvents(r.Context(), page, limit)
 	if err != nil {
 		h.app.AppError(w, r, err)
 		return
 	}
-	out := make([]dto.EventDTO, 0, len(events))
-	for _, e := range events {
+	out := make([]dto.EventDTO, 0, len(result.Items))
+	for _, e := range result.Items {
 		out = append(out, toEventDTO(e))
 	}
-	shared.WriteJSON(w, http.StatusOK, out)
+	writePaginated(w, http.StatusOK, out, dto.PaginationMeta{
+		Page:    page,
+		Limit:   limit,
+		Total:   result.Total,
+		HasNext: page*limit < result.Total,
+	})
 }
 
 func parseEventRequest(w http.ResponseWriter, r *http.Request) (*domain.Event, error) {
@@ -206,4 +226,43 @@ func toEventDTO(e *domain.Event) dto.EventDTO {
 		MaxAttendees:     e.MaxAttendees,
 		CreatedAt:        e.CreatedAt,
 	}
+}
+
+const (
+	defaultPage  = 1
+	defaultLimit = 20
+	maxLimit     = 100
+)
+
+// parsePagination reads page/limit query params, validates them, and writes a
+// 400 if invalid. Returns page, limit, and whether parsing succeeded.
+func parsePagination(w http.ResponseWriter, r *http.Request) (page, limit int, ok bool) {
+	page = defaultPage
+	limit = defaultLimit
+
+	if v := r.URL.Query().Get("page"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			shared.WriteErrorJSON(w, http.StatusBadRequest, "bad_request", "page must be a positive integer")
+			return 0, 0, false
+		}
+		page = n
+	}
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > maxLimit {
+			shared.WriteErrorJSON(w, http.StatusBadRequest, "bad_request", "limit must be between 1 and 100")
+			return 0, 0, false
+		}
+		limit = n
+	}
+	return page, limit, true
+}
+
+// writePaginated writes a {"data": [...], "pagination": {...}} response.
+func writePaginated[T any](w http.ResponseWriter, status int, data []T, meta dto.PaginationMeta) {
+	resp := dto.PaginatedResponse[T]{Data: data, Pagination: meta}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(resp)
 }

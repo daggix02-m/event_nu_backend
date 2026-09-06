@@ -58,13 +58,14 @@ func (r *EventRepository) GetByID(ctx context.Context, id string) (*domain.Event
 		FROM events WHERE id = $1 AND deleted_at IS NULL`, id))
 }
 
-// ListVisible returns published, non-blocked events ordered by start time.
-func (r *EventRepository) ListVisible(ctx context.Context) ([]*domain.Event, error) {
+// ListVisible returns published, non-blocked events ordered by start time, bounded by limit/offset.
+func (r *EventRepository) ListVisible(ctx context.Context, limit, offset int) ([]*domain.Event, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT `+eventColumns+`
 		FROM events
 		WHERE status = 'published' AND moderation_status <> 'blocked' AND deleted_at IS NULL
-		ORDER BY starts_at`)
+		ORDER BY starts_at, id
+		LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list events: %w", err)
 	}
@@ -79,6 +80,18 @@ func (r *EventRepository) ListVisible(ctx context.Context) ([]*domain.Event, err
 		events = append(events, e)
 	}
 	return events, rows.Err()
+}
+
+// CountVisible returns the total number of published, non-blocked events.
+func (r *EventRepository) CountVisible(ctx context.Context) (int, error) {
+	var total int
+	err := r.q(ctx).QueryRow(ctx, `
+		SELECT count(*) FROM events
+		WHERE status = 'published' AND moderation_status <> 'blocked' AND deleted_at IS NULL`).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("count events: %w", err)
+	}
+	return total, nil
 }
 
 func (r *EventRepository) Update(ctx context.Context, e *domain.Event) (*domain.Event, error) {
