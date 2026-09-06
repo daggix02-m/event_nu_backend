@@ -74,14 +74,38 @@ func (r *OrganizerRepository) GetApplicationByID(ctx context.Context, id string)
 		FROM organizer_applications WHERE id = $1`, id))
 }
 
-func (r *OrganizerRepository) ReviewApplication(ctx context.Context, id string, status, reviewedBy, reviewNotes string) error {
-	_, err := r.q(ctx).Exec(ctx, `
+// ApproveApplication atomically transitions a pending application to approved.
+// The `WHERE status = 'pending'` guard means competing reviewers both run the
+// UPDATE, but Postgres re-evaluates the predicate after the first commits, so
+// exactly one wins; the loser matches zero rows and gets a 409 conflict.
+func (r *OrganizerRepository) ApproveApplication(ctx context.Context, id, adminUserID, notes string) (*domain.OrganizerApplication, error) {
+	app, err := scanApplication(r.q(ctx).QueryRow(ctx, `
 		UPDATE organizer_applications
-		SET status = $2, reviewed_by = $3, reviewed_at = now(), review_notes = $4, updated_at = now()
-		WHERE id = $1`,
-		id, status, reviewedBy, reviewNotes)
+		SET status = 'approved', reviewed_by = $2, reviewed_at = now(), review_notes = $3, updated_at = now()
+		WHERE id = $1 AND status = 'pending'
+		RETURNING `+applicationColumns,
+		id, adminUserID, notes))
+	if err == nil {
+		return app, nil
+	}
+	if errors.Is(err, shared.ErrNotFound) {
+		return nil, fmt.Errorf("%w: application_not_pending", shared.ErrConflict)
+	}
+	return nil, fmt.Errorf("approve organizer_application: %w", err)
+}
+
+// RejectApplication atomically transitions a pending application to rejected.
+func (r *OrganizerRepository) RejectApplication(ctx context.Context, id, adminUserID, notes string) error {
+	tag, err := r.q(ctx).Exec(ctx, `
+		UPDATE organizer_applications
+		SET status = 'rejected', reviewed_by = $2, reviewed_at = now(), review_notes = $3, updated_at = now()
+		WHERE id = $1 AND status = 'pending'`,
+		id, adminUserID, notes)
 	if err != nil {
-		return fmt.Errorf("review organizer_application: %w", err)
+		return fmt.Errorf("reject organizer_application: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: application_not_pending", shared.ErrConflict)
 	}
 	return nil
 }

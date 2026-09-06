@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -61,17 +62,16 @@ func (s *OrganizerService) GetMyApplication(ctx context.Context, userID string) 
 	return s.orgs.GetApplicationByUser(ctx, userID)
 }
 
-// Approve reviews a pending application and creates the organizer record.
+// Approve reviews a pending application and creates the organizer record. The
+// approval is atomic (`WHERE status = 'pending'` guard) and, because the handler
+// runs inside the per-request transaction, a later organizer-create failure
+// rolls the review back to pending.
 func (s *OrganizerService) Approve(ctx context.Context, applicationID, adminUserID, notes string) (*domain.Organizer, error) {
-	app, err := s.orgs.GetApplicationByID(ctx, applicationID)
+	app, err := s.orgs.ApproveApplication(ctx, applicationID, adminUserID, notes)
 	if err != nil {
-		return nil, err
-	}
-	if app.Status != "pending" {
-		return nil, shared.NewAppError("application_not_pending", "This application is not pending.", http.StatusConflict)
-	}
-
-	if err := s.orgs.ReviewApplication(ctx, applicationID, "approved", adminUserID, notes); err != nil {
+		if errors.Is(err, shared.ErrConflict) {
+			return nil, shared.NewAppError("application_not_pending", "This application is not pending.", http.StatusConflict)
+		}
 		return nil, err
 	}
 
@@ -88,14 +88,13 @@ func (s *OrganizerService) Approve(ctx context.Context, applicationID, adminUser
 }
 
 func (s *OrganizerService) Reject(ctx context.Context, applicationID, adminUserID, notes string) error {
-	app, err := s.orgs.GetApplicationByID(ctx, applicationID)
-	if err != nil {
+	if err := s.orgs.RejectApplication(ctx, applicationID, adminUserID, notes); err != nil {
+		if errors.Is(err, shared.ErrConflict) {
+			return shared.NewAppError("application_not_pending", "This application is not pending.", http.StatusConflict)
+		}
 		return err
 	}
-	if app.Status != "pending" {
-		return shared.NewAppError("application_not_pending", "This application is not pending.", http.StatusConflict)
-	}
-	return s.orgs.ReviewApplication(ctx, applicationID, "rejected", adminUserID, notes)
+	return nil
 }
 
 var slugPattern = regexp.MustCompile(`[^a-z0-9]+`)
