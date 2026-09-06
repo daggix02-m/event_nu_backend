@@ -6,6 +6,7 @@ import (
 
 	"github.com/daggix02-m/event_nu/backend/internal/api"
 	"github.com/daggix02-m/event_nu/backend/internal/api/handlers"
+	"github.com/daggix02-m/event_nu/backend/internal/api/metrics"
 	"github.com/daggix02-m/event_nu/backend/internal/api/middleware"
 )
 
@@ -15,6 +16,8 @@ func New(app *api.Application) http.Handler {
 
 	mux.HandleFunc("GET /healthz", handlers.Healthz(app))
 	mux.HandleFunc("GET /readyz", handlers.Readyz(app))
+	// /metrics is deliberately outside auth/RLS and never touches the database.
+	mux.HandleFunc("GET /metrics", handlers.Metrics(app))
 
 	auth := handlers.NewAuthHandlers(app, app.Auth)
 	email := handlers.NewEmailHandlers(app)
@@ -91,13 +94,19 @@ func New(app *api.Application) http.Handler {
 		allowed[o] = struct{}{}
 	}
 
-	return middleware.RecoverPanic(app.Logger)(
-		middleware.RequestTimeout(15 * time.Second)(
-			middleware.CORS(allowed)(
-				middleware.SecureHeaders(
-					middleware.RequestID(
-						middleware.LogRequest(app.Logger)(
-							middleware.BeginRequestTx(app.DB, app.Logger)(mux),
+	// Count every completed request (method + status) at the outermost edge —
+	// outside RecoverPanic's 500 conversion and CORS short-circuits, but not
+	// inside LogRequest's redaction scope. /metrics scrapes are counted too,
+	// which is the normal Prometheus self-measurement behavior.
+	return metrics.Count(app.Metrics)(
+		middleware.RecoverPanic(app.Logger)(
+			middleware.RequestTimeout(15 * time.Second)(
+				middleware.CORS(allowed)(
+					middleware.SecureHeaders(
+						middleware.RequestID(
+							middleware.LogRequest(app.Logger)(
+								middleware.BeginRequestTx(app.DB, app.Logger)(mux),
+							),
 						),
 					),
 				),

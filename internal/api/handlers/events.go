@@ -110,12 +110,17 @@ func (h *EventHandlers) CreateEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *EventHandlers) UpdateEvent(w http.ResponseWriter, r *http.Request) {
+	id, ok := ParseUUIDParam(r, "id")
+	if !ok {
+		h.app.NotFound(w, r)
+		return
+	}
 	req, err := parseEventRequest(w, r)
 	if err != nil {
 		h.app.ClientError(w, r, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
-	event, err := h.event.UpdateEvent(r.Context(), middleware.UserID(r.Context()), r.PathValue("id"), req)
+	event, err := h.event.UpdateEvent(r.Context(), middleware.UserID(r.Context()), id, req)
 	if err != nil {
 		h.app.AppError(w, r, err)
 		return
@@ -124,7 +129,12 @@ func (h *EventHandlers) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *EventHandlers) Publish(w http.ResponseWriter, r *http.Request) {
-	event, err := h.event.Publish(r.Context(), middleware.UserID(r.Context()), r.PathValue("id"))
+	id, ok := ParseUUIDParam(r, "id")
+	if !ok {
+		h.app.NotFound(w, r)
+		return
+	}
+	event, err := h.event.Publish(r.Context(), middleware.UserID(r.Context()), id)
 	if err != nil {
 		h.app.AppError(w, r, err)
 		return
@@ -133,7 +143,12 @@ func (h *EventHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *EventHandlers) GetEvent(w http.ResponseWriter, r *http.Request) {
-	event, err := h.event.GetEvent(r.Context(), r.PathValue("id"))
+	id, ok := ParseUUIDParam(r, "id")
+	if !ok {
+		h.app.NotFound(w, r)
+		return
+	}
+	event, err := h.event.GetEvent(r.Context(), id)
 	if err != nil {
 		h.app.AppError(w, r, err)
 		return

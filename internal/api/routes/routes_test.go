@@ -94,6 +94,34 @@ func TestReadyzRoute(t *testing.T) {
 	}
 }
 
+func TestMetricsRouteIsPublicNoAuth(t *testing.T) {
+	h := newTestHandler(t)
+	rec := doReq(t, h, http.MethodGet, "/metrics", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"http_requests_total", "process_goroutines", "process_alloc_bytes", "process_gc_count"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+// TestEventMalformedUUIDIs404Not500 proves the end-to-end guarantee of
+// phase-09: a malformed {id} yields a clean JSON 404 before any DB access,
+// never the Postgres 22P02 500 it would have produced previously.
+func TestEventMalformedUUIDIs404Not500(t *testing.T) {
+	h := newTestHandler(t)
+	rec := doReq(t, h, http.MethodGet, "/api/v1/events/not-a-uuid", "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 (not 500), got %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected a JSON app-level 404, got Content-Type %q", ct)
+	}
+}
+
 func TestUnknownRouteIs404(t *testing.T) {
 	h := newTestHandler(t)
 	for _, path := range []string{"/nope", "/api/v1/nope"} {
@@ -141,7 +169,11 @@ func TestAuthAndPublicRoutesAreRegistered(t *testing.T) {
 		{http.MethodGet, "/api/v1/venues"},
 		{http.MethodGet, "/api/v1/categories"},
 		{http.MethodGet, "/api/v1/events"},
-		{http.MethodGet, "/api/v1/events/some-id"},
+		// A well-formed but nonexistent UUID: its route is registered, so the
+		// request must reach the handler (a DB-backed 500 today) rather than
+		// the mux's default 404. Malformed ids are no longer usable here —
+		// they are a legitimate handler-level 404 now.
+		{http.MethodGet, "/api/v1/events/9f5f0a2c-0000-0000-0000-000000000001"},
 	} {
 		rec := doReq(t, h, tc.method, tc.path, "")
 		// A registered route must never 404 — it falls through to handler/auth

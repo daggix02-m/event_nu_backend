@@ -34,6 +34,13 @@ func (app *Application) AppError(w http.ResponseWriter, r *http.Request, err err
 	app.ServerError(w, r, err)
 }
 
+// NotFound writes the standard 404 body. Used when a resource id path
+// parameter is malformed or names no resource: the client must not be able to
+// distinguish a bad UUID from a missing one (no existence/format hints).
+func (app *Application) NotFound(w http.ResponseWriter, r *http.Request) {
+	app.ClientError(w, r, http.StatusNotFound, "not_found", "cannot find resource")
+}
+
 // ClientError returns a simple error response with the given status and code.
 func (app *Application) ClientError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
 	app.Logger.Warn("client error", "request_id", r.Context().Value(middleware.RequestIDKey), "code", code, "message", message)

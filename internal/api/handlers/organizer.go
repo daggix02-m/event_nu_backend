@@ -47,7 +47,11 @@ func (h *OrganizerHandlers) GetMyApplication(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *OrganizerHandlers) Approve(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id, ok := ParseUUIDParam(r, "id")
+	if !ok {
+		h.app.NotFound(w, r)
+		return
+	}
 	var req dto.ReviewApplicationRequest
 	if err := shared.DecodeJSON(w, r, &req); err != nil {
 		h.app.ClientError(w, r, http.StatusBadRequest, "bad_request", err.Error())
@@ -63,7 +67,11 @@ func (h *OrganizerHandlers) Approve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrganizerHandlers) Reject(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id, ok := ParseUUIDParam(r, "id")
+	if !ok {
+		h.app.NotFound(w, r)
+		return
+	}
 	var req dto.ReviewApplicationRequest
 	if err := shared.DecodeJSON(w, r, &req); err != nil {
 		h.app.ClientError(w, r, http.StatusBadRequest, "bad_request", err.Error())

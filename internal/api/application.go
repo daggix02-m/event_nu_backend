@@ -3,6 +3,7 @@ package api
 import (
 	"log/slog"
 
+	"github.com/daggix02-m/event_nu/backend/internal/api/metrics"
 	"github.com/daggix02-m/event_nu/backend/internal/api/middleware"
 	"github.com/daggix02-m/event_nu/backend/internal/config"
 	"github.com/daggix02-m/event_nu/backend/internal/repository"
@@ -30,6 +31,10 @@ type Application struct {
 	// read the request tx from context, so records share the guarded write's
 	// transaction (a rollback undoes the record too).
 	Idempotency *repository.IdempotencyRepository
+
+	// Metrics backs the /metrics endpoint (process gauges + HTTP request
+	// counter). Created per app instance so tests get isolated state.
+	Metrics *metrics.Registry
 }
 
 func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Application {
@@ -52,5 +57,6 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Org:         service.NewOrganizerService(orgs),
 		Event:       service.NewEventService(events, venues, cats, orgs),
 		Idempotency: repository.NewIdempotencyRepository(pool),
+		Metrics:     metrics.NewRegistry(),
 	}
 }
