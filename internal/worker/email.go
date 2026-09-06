@@ -12,13 +12,23 @@ import (
 	"github.com/daggix02-m/event_nu/backend/internal/repository"
 )
 
+// emailOutboxStore is the persistence surface the email consumer needs. It is
+// an interface (rather than a concrete *OutboxRepository) so reliability tests
+// can inject a faulting store at the MarkSent/MarkFailed commit step without
+// simulating a real database failure. No behavior depends on the concrete type.
+type emailOutboxStore interface {
+	ClaimBatch(ctx context.Context, batchSize int, lease time.Duration) ([]domain.EmailOutbox, error)
+	MarkSent(ctx context.Context, id, messageID string) error
+	MarkFailed(ctx context.Context, id string, errMsg string, attempts, maxAttempts int, nextRetryAt time.Time) error
+}
+
 // EmailConsumer drains the email_outbox table and sends via the configured
 // provider. It owns retry/backoff; failed sends are dead-lettered (status
 // 'failed') after max attempts and remain visible in email_logs.
 type EmailConsumer struct {
 	logger *slog.Logger
 	cfg    config.Config
-	outbox *repository.OutboxRepository
+	outbox emailOutboxStore
 	sender email.Sender
 }
 

@@ -98,13 +98,19 @@ func (f *fakeBrevo) handler() http.HandlerFunc {
 	}
 }
 
-func testConsumer(t *testing.T, pool *pgxpool.Pool, cfg config.Config, sender email.Sender) *EmailConsumer {
+func purgeEmailTables(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
 	// Isolation: purge any rows left by prior runs against the shared dev DB.
 	for _, tbl := range []string{"email_logs", "email_outbox", "email_codes"} {
 		if _, err := pool.Exec(context.Background(), "DELETE FROM "+tbl); err != nil {
 			t.Fatalf("purge %s: %v", tbl, err)
 		}
 	}
+}
+
+func testConsumer(t *testing.T, pool *pgxpool.Pool, cfg config.Config, sender email.Sender) *EmailConsumer {
+	t.Helper()
+	purgeEmailTables(t, pool)
 	return NewEmailConsumer(testLogger(), cfg, repository.NewOutboxRepository(pool), sender)
 }
 
