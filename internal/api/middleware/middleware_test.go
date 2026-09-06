@@ -1,10 +1,12 @@
 package middleware
 
 import (
+	"bytes"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +98,32 @@ func TestCORSPreflight(t *testing.T) {
 	}
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://admin.example.com" {
 		t.Fatalf("expected allow-origin header, got %q", got)
+	}
+}
+
+// TestLogRequestRedactsQueryString proves LogRequest never emits the raw query
+// string, so secrets passed as query parameters (codes, tokens) cannot leak
+// into log output.
+func TestLogRequestRedactsQueryString(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	handler := LogRequest(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/verify?code=SECRET&access_token=X", nil)
+
+	handler.ServeHTTP(rec, req)
+
+	out := buf.String()
+	for _, secret := range []string{"SECRET", "access_token=X", "code=SECRET"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("query-string secret %q leaked into logs: %s", secret, out)
+		}
+	}
+	// The path itself is still logged (query stripped).
+	if !strings.Contains(out, "path=/api/v1/auth/verify") {
+		t.Fatalf("expected path to be logged, got: %s", out)
 	}
 }

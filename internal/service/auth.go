@@ -22,13 +22,43 @@ import (
 
 const bcryptCost = 12
 
+var (
+	// bcryptCompare is the seam through which login performs its password
+	// check. Tests swap it for a counting spy to prove that unknown-email and
+	// wrong-password logins perform identical bcrypt work without relying on
+	// flaky wall-clock assertions.
+	bcryptCompare = bcrypt.CompareHashAndPassword
+
+	// dummyPasswordHash is a real cost-12 hash burned against the presented
+	// password when the email is unknown, so "no such user" and "wrong
+	// password" login attempts consume the same CPU time. This prevents
+	// account enumeration via response-timing.
+	dummyPasswordHash = mustGenerateDummyHash()
+)
+
+func mustGenerateDummyHash() []byte {
+	h, err := bcrypt.GenerateFromPassword([]byte("eventnu-timing-equalizer"), bcryptCost)
+	if err != nil {
+		panic("generate timing-equalizer hash: " + err.Error())
+	}
+	return h
+}
+
+// userStore is the user-repository surface the auth service depends on, kept
+// as an interface so unit tests can stub lookups without a database.
+type userStore interface {
+	Create(ctx context.Context, email, passwordHash, username string) (*domain.User, error)
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	GetByID(ctx context.Context, id string) (*domain.User, error)
+}
+
 type AuthService struct {
-	users    *repository.UserRepository
+	users    userStore
 	sessions *repository.SessionRepository
 	config   config.Config
 }
 
-func NewAuthService(users *repository.UserRepository, sessions *repository.SessionRepository, cfg config.Config) *AuthService {
+func NewAuthService(users userStore, sessions *repository.SessionRepository, cfg config.Config) *AuthService {
 	return &AuthService{users: users, sessions: sessions, config: cfg}
 }
 
@@ -83,12 +113,15 @@ func (s *AuthService) Login(ctx context.Context, email, password string, userAge
 	user, err := s.users.GetByEmail(ctx, strings.ToLower(email))
 	if err != nil {
 		if err == shared.ErrNotFound {
+			// Burn the same bcrypt work as a real comparison so response
+			// timing cannot reveal whether the email exists.
+			_ = bcryptCompare(dummyPasswordHash, []byte(password))
 			return nil, shared.NewAppError("invalid_credentials", "Invalid email or password.", http.StatusUnauthorized)
 		}
 		return nil, err
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+	if err := bcryptCompare([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return nil, shared.NewAppError("invalid_credentials", "Invalid email or password.", http.StatusUnauthorized)
 	}
 

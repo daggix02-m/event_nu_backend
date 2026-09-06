@@ -70,7 +70,7 @@ func LogRequest(logger *slog.Logger) func(http.Handler) http.Handler {
 			logger.Info("request",
 				"request_id", r.Context().Value(RequestIDKey),
 				"method", r.Method,
-				"path", r.URL.RequestURI(),
+				"path", r.URL.Path,
 				"status", rec.status,
 				"duration", time.Since(start).String(),
 				"ip", r.RemoteAddr,

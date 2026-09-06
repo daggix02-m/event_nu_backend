@@ -137,13 +137,17 @@ Integration tests that need a database skip when `DATABASE_URL` isn't set.
    `email_logs`, retries with backoff on transient failures (`429`/`5xx`), and
    dead-letters rows that exhaust `EMAIL_MAX_ATTEMPTS`.
 3. Verification uses a 6-digit code: `SendVerification` stores its SHA-256
-   hash in `email_codes` (TTL 24h, max 5 attempts) and emails a clickable
-   link; `GET /api/v1/auth/verify?code=XXXXXX` redeems it.
+   hash in `email_codes` (TTL 24h, max 5 attempts) and emails a code-free deep
+   link (`eventnu://verify`) with the code as a separate param. The code is
+   never embedded in a URL, so it cannot leak through logs, referrers, or
+   browser history. `POST /api/v1/auth/verify` (JSON body `{"code":"XXXXXX"}`)
+   redeems it; the old `GET /api/v1/auth/verify?code=…` was removed (405).
 
 Brevo templates receive params as `{{ params.<key> }}`:
 
 - Welcome (3): `{{ params.name }}`, `{{ params.username }}`
-- Verify (4): `{{ params.name }}`, `{{ params.verify_url }}`
+- Verify (4): `{{ params.name }}`, `{{ params.verify_url }}` (`eventnu://verify`),
+  `{{ params.verify_code }}` (6-digit code the app POSTs)
 
 ## Brevo setup
 

@@ -154,7 +154,7 @@ func TestAuthAndPublicRoutesAreRegistered(t *testing.T) {
 func TestDeprecatedVerifyGETReturns405(t *testing.T) {
 	h := newTestHandler(t)
 	rec := doReq(t, h, http.MethodGet, "/api/v1/auth/verify?code=123456", "")
-	if rec.Code == http.StatusOK {
-		t.Fatalf("GET verify must not be a live route")
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 (route removed), got %d", rec.Code)
 	}
 }

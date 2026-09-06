@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,12 +93,29 @@ func TestVerifyCodeFlow(t *testing.T) {
 		t.Fatalf("expected 6-digit code, got %q", code)
 	}
 
-	// Outbox must contain the verification email with the clickable link.
+	// Outbox must contain the verification email with a code-free deep link
+	// and the 6-digit code as a separate param.
 	var count int
 	_ = pool.QueryRow(context.Background(),
 		`SELECT count(*) FROM email_outbox WHERE recipient_email = $1 AND template_id = 11`, user.Email).Scan(&count)
 	if count != 1 {
 		t.Fatalf("expected 1 verification outbox row, got %d", count)
+	}
+
+	var verifyURL, verifyCode string
+	if err := pool.QueryRow(context.Background(),
+		`SELECT params->>'verify_url', params->>'verify_code' FROM email_outbox WHERE recipient_email = $1 AND template_id = 11`,
+		user.Email).Scan(&verifyURL, &verifyCode); err != nil {
+		t.Fatalf("read outbox params: %v", err)
+	}
+	if verifyURL != "eventnu://verify" {
+		t.Fatalf("expected eventnu://verify deep link, got %q", verifyURL)
+	}
+	if verifyCode != code {
+		t.Fatalf("expected verify_code %q in outbox, got %q", code, verifyCode)
+	}
+	if strings.Contains(verifyURL, code) {
+		t.Fatal("verification code must never appear in the emitted URL")
 	}
 
 	// Valid code verifies the user.

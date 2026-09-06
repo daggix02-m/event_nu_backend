@@ -29,13 +29,6 @@ func (h *EmailHandlers) VerifyPOST(w http.ResponseWriter, r *http.Request) {
 	h.verify(w, r, req.Code)
 }
 
-// VerifyGET backs the clickable link in the verification email:
-// GET /api/v1/auth/verify?code=XXXXXX
-func (h *EmailHandlers) VerifyGET(w http.ResponseWriter, r *http.Request) {
-	code := r.URL.Query().Get("code")
-	h.verify(w, r, code)
-}
-
 func (h *EmailHandlers) verify(w http.ResponseWriter, r *http.Request, code string) {
 	if err := h.app.Email.VerifyCode(r.Context(), code); err != nil {
 		h.app.AppError(w, r, err)

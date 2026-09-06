@@ -31,6 +31,11 @@ func NewEmailService(outbox *repository.OutboxRepository, codes *repository.Emai
 const codeTTL = 24 * time.Hour
 const verifyMaxAttempts = 5
 
+// verifyURL is the deep link the app opens to complete verification. The code
+// is never placed in a URL — it rides separately as verify_code so it cannot
+// leak through logs, referrers, or the browser history.
+const verifyURL = "eventnu://verify"
+
 // SendWelcome enqueues the welcome email after registration.
 func (s *EmailService) SendWelcome(ctx context.Context, user *domain.User) error {
 	return s.enqueue(ctx, user.Email, user.Username, s.config.BrevoTemplateWelcome, map[string]any{
@@ -40,7 +45,9 @@ func (s *EmailService) SendWelcome(ctx context.Context, user *domain.User) error
 }
 
 // SendVerification generates a one-time verification code, stores its hash,
-// and enqueues a verification email containing a clickable link.
+// and enqueues a verification email. The clickable link carries a constant
+// deep link (no code); the 6-digit code is a separate template param so it
+// never appears in a URL.
 func (s *EmailService) SendVerification(ctx context.Context, user *domain.User) (string, error) {
 	code, err := generateCode(6)
 	if err != nil {
@@ -51,10 +58,10 @@ func (s *EmailService) SendVerification(ctx context.Context, user *domain.User) 
 		return "", err
 	}
 
-	verifyURL := s.config.APIPublicBase + "/api/v1/auth/verify?code=" + code
 	if err := s.enqueue(ctx, user.Email, user.Username, s.config.BrevoTemplateVerify, map[string]any{
-		"name":       user.Username,
-		"verify_url": verifyURL,
+		"name":        user.Username,
+		"verify_url":  verifyURL,
+		"verify_code": code,
 	}); err != nil {
 		return "", err
 	}

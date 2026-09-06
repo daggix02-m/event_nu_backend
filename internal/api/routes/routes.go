@@ -31,7 +31,6 @@ func New(app *api.Application) http.Handler {
 	mux.Handle("POST /api/v1/auth/refresh", service(auth.Refresh))
 	mux.Handle("POST /api/v1/auth/logout", service(auth.Logout))
 	mux.Handle("POST /api/v1/auth/verify", service(email.VerifyPOST))
-	mux.Handle("GET /api/v1/auth/verify", service(email.VerifyGET))
 
 	// Public read routes: role 'user' with no identity — RLS gates visibility
 	// purely on row content (published/active/non-deleted).
