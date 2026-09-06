@@ -137,13 +137,17 @@ func (s *AuthService) Login(ctx context.Context, email, password string, userAge
 	return &UserSession{User: user, Tokens: tokens}, nil
 }
 
-// Refresh rotates a refresh token: validates the existing session, revokes it,
-// and issues a new pair.
+// Refresh rotates a refresh token: atomically consumes the existing session
+// (revokes it in one statement so replay/concurrency yields a single winner),
+// then issues a new pair. All steps share the per-request transaction, so if
+// any later step fails and the handler returns an error, the whole rotation
+// rolls back and the original token stays usable.
 func (s *AuthService) Refresh(ctx context.Context, refreshToken, userAgent, ip string) (*UserSession, error) {
 	hash := hashToken(refreshToken)
-	session, err := s.sessions.GetActiveByRefreshHash(ctx, hash)
+	session, err := s.sessions.ConsumeForRotation(ctx, hash)
 	if err != nil {
 		if err == shared.ErrNotFound {
+			// Consumed, expired, or revoked — all land here and reject the token.
 			return nil, shared.NewAppError("invalid_refresh_token", "The refresh token is invalid or expired.", http.StatusUnauthorized)
 		}
 		return nil, err
@@ -151,11 +155,6 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken, userAgent, ip s
 
 	user, err := s.users.GetByID(ctx, session.UserID)
 	if err != nil {
-		return nil, err
-	}
-
-	// Rotate: the used refresh token can never be replayed.
-	if err := s.sessions.Revoke(ctx, hash); err != nil {
 		return nil, err
 	}
 

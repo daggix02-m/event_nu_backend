@@ -56,6 +56,30 @@ func (r *SessionRepository) GetActiveByRefreshHash(ctx context.Context, refreshH
 	return &s, nil
 }
 
+// ConsumeForRotation atomically marks a single active session as revoked and
+// returns it, so one refresh token can be successfully rotated by at most one
+// concurrent request. The UPDATE is a single statement: it reads and revokes
+// in one atomic operation (no read-then-revoke window). Under concurrency,
+// Postgres row locking serializes the UPDATEs and the WHERE re-evaluation
+// makes every request after the first match zero rows.
+func (r *SessionRepository) ConsumeForRotation(ctx context.Context, refreshHash string) (*domain.Session, error) {
+	row := r.q(ctx).QueryRow(ctx, `
+		UPDATE auth_sessions
+		SET revoked_at = now(), updated_at = now()
+		WHERE refresh_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+		RETURNING id, user_id, refresh_hash, user_agent, ip_hash, device_name, expires_at, revoked_at, created_at, updated_at`, refreshHash)
+
+	var s domain.Session
+	err := row.Scan(&s.ID, &s.UserID, &s.RefreshHash, &s.UserAgent, &s.IPHash, &s.DeviceName, &s.ExpiresAt, &s.RevokedAt, &s.CreatedAt, &s.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, shared.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("consume session for rotation: %w", err)
+	}
+	return &s, nil
+}
+
 // Revoke invalidates a refresh token by hash (idempotent).
 func (r *SessionRepository) Revoke(ctx context.Context, refreshHash string) error {
 	_, err := r.q(ctx).Exec(ctx, `

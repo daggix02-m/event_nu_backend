@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -215,6 +216,61 @@ func TestAuthFlowMatrix(t *testing.T) {
 		fmt.Sprintf(`{"refresh_token":%q}`, refreshed.Data.RefreshToken), "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("refresh after logout: expected 401, got %d", rec.Code)
+	}
+}
+
+// TestRefreshConcurrentSingleWinner proves refresh-token rotation is atomic at
+// the HTTP layer: N concurrent refreshes of the same token yield exactly one
+// success, and the consumed token can never be replayed afterwards.
+func TestRefreshConcurrentSingleWinner(t *testing.T) {
+	_, h := newTestApp(t)
+	email := fmt.Sprintf("authrace+%d@test.example", time.Now().UnixNano())
+	reg := registerUser(t, h, email)
+	token := reg.Data.RefreshToken
+
+	const n = 8
+	var (
+		wg           sync.WaitGroup
+		mu           sync.Mutex
+		okCount      int
+		unauthorized int
+		other        []int
+		winnerBody   string
+	)
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			rec := doJSON(t, h, http.MethodPost, "/api/v1/auth/refresh",
+				fmt.Sprintf(`{"refresh_token":%q}`, token), "")
+			mu.Lock()
+			defer mu.Unlock()
+			switch rec.Code {
+			case http.StatusOK:
+				okCount++
+				winnerBody = rec.Body.String()
+			case http.StatusUnauthorized:
+				unauthorized++
+			default:
+				other = append(other, rec.Code)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if okCount != 1 {
+		t.Fatalf("expected exactly one 200, got %d (401s=%d, other=%v, winner=%s)",
+			okCount, unauthorized, other, winnerBody)
+	}
+	if unauthorized != n-1 {
+		t.Fatalf("expected %d unauthorized, got %d", n-1, unauthorized)
+	}
+
+	// The consumed token is revoked — replaying it must now fail.
+	rec := doJSON(t, h, http.MethodPost, "/api/v1/auth/refresh",
+		fmt.Sprintf(`{"refresh_token":%q}`, token), "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("replay of consumed token: expected 401, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
