@@ -8,16 +8,28 @@ import (
 	"strings"
 
 	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
 	"github.com/daggix02-m/event_nu/backend/internal/shared"
 	"github.com/daggix02-m/event_nu/backend/internal/validator"
 )
 
-type OrganizerService struct {
-	orgs *repository.OrganizerRepository
+// organizerStore is the organizer-repository surface both OrganizerService and
+// EventService.RequireOrganizer depend on, kept as an interface so unit tests
+// can stub it without a database.
+type organizerStore interface {
+	GetOrganizerByOwner(ctx context.Context, userID string) (*domain.Organizer, error)
+	GetOrganizerByID(ctx context.Context, id string) (*domain.Organizer, error)
+	GetApplicationByUser(ctx context.Context, userID string) (*domain.OrganizerApplication, error)
+	CreateApplication(ctx context.Context, a *domain.OrganizerApplication) error
+	ApproveApplication(ctx context.Context, id, adminUserID, notes string) (*domain.OrganizerApplication, error)
+	RejectApplication(ctx context.Context, id, adminUserID, notes string) error
+	CreateOrganizer(ctx context.Context, o *domain.Organizer) (*domain.Organizer, error)
 }
 
-func NewOrganizerService(orgs *repository.OrganizerRepository) *OrganizerService {
+type OrganizerService struct {
+	orgs organizerStore
+}
+
+func NewOrganizerService(orgs organizerStore) *OrganizerService {
 	return &OrganizerService{orgs: orgs}
 }
 
@@ -60,6 +72,13 @@ func (s *OrganizerService) Apply(ctx context.Context, userID, requestedName, req
 
 func (s *OrganizerService) GetMyApplication(ctx context.Context, userID string) (*domain.OrganizerApplication, error) {
 	return s.orgs.GetApplicationByUser(ctx, userID)
+}
+
+// GetOrganizer resolves an organizer by id. Visibility is enforced by the
+// organizers_read_public policy (active + not archived), so a suspended or
+// deleted organizer surfaces as ErrNotFound to non-privileged readers.
+func (s *OrganizerService) GetOrganizer(ctx context.Context, id string) (*domain.Organizer, error) {
+	return s.orgs.GetOrganizerByID(ctx, id)
 }
 
 // Approve reviews a pending application and creates the organizer record. The

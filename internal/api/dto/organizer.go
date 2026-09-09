@@ -48,3 +48,22 @@ type CategoryDTO struct {
 	Slug string `json:"slug"`
 	Name string `json:"name"`
 }
+
+// OrganizerDTO is the public organizer profile. follower_count and
+// followed_by_me are populated from organizer_follows on read.
+type OrganizerDTO struct {
+	ID            string    `json:"id"`
+	Slug          string    `json:"slug"`
+	Name          string    `json:"name"`
+	Bio           string    `json:"bio"`
+	Status        string    `json:"status"`
+	FollowerCount int       `json:"follower_count"`
+	FollowedByMe  bool      `json:"followed_by_me"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// FollowState is the response of follow/unfollow toggles.
+type FollowState struct {
+	FollowerCount int  `json:"follower_count"`
+	FollowedByMe  bool `json:"followed_by_me"`
+}
