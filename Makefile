@@ -1,4 +1,14 @@
-.PHONY: run worker test vet build fmt migrate-up migrate-new tidy ci
+# Defaults point at the CI-equivalent local Postgres from docker-compose.yml;
+# anything already exported in the environment wins (the `?=` only applies
+# when unset), matching the secrets CI injects.
+DATABASE_ADMIN_URL ?= postgres://postgres:postgres@127.0.0.1:55432/event_nu_test?sslmode=disable
+DATABASE_URL ?= postgres://app_user:app_user_pass@127.0.0.1:55432/event_nu_test?sslmode=disable
+JWT_SECRET ?= ci-only-test-secret-never-used-in-production
+EMAIL_PROVIDER ?= noop
+
+export DATABASE_ADMIN_URL DATABASE_URL JWT_SECRET EMAIL_PROVIDER
+
+.PHONY: run worker test vet build fmt migrate-up migrate-new db-up db-down tidy ci
 
 run:
 	go run ./cmd/api
@@ -28,6 +38,18 @@ migrate-up:
 migrate-new:
 	@test -n "$(name)" || (echo "usage: make migrate-new name=<snake_case>" && exit 1)
 	cd migrations && goose create "$(name)" sql
+
+db-up:
+	# CI-equivalent Postgres 16: up, wait for readiness, create the RLS
+	# app_user role + default privileges, then apply migrations.
+	docker compose -f ../docker-compose.yml up -d
+	@echo "waiting for Postgres..."
+	@until docker exec event_nu_ci_pg pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+	psql "$$DATABASE_ADMIN_URL" -f scripts/bootstrap_app_user.sql
+	cd migrations && goose postgres "$$DATABASE_ADMIN_URL" up
+
+db-down:
+	docker compose -f ../docker-compose.yml down
 
 ci:
 	# Local equivalent of the CI gate (phase-01): same commands the workflow

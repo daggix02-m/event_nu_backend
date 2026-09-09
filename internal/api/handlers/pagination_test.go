@@ -51,13 +51,13 @@ func promoteOrganizer(t *testing.T, h http.Handler, prefix, name string) (orgTok
 func createPublishedEvent(t *testing.T, h http.Handler, orgTok, start string) string {
 	t.Helper()
 	rec := doJSON(t, h, http.MethodPost, "/api/v1/venues",
-		fmt.Sprintf(`{"name":"Venue %d","latitude":40.71,"longitude":-74.00,"city":"NYC"}`, time.Now().UnixNano()%1e6), orgTok)
+		fmt.Sprintf(`{"name":"Venue %d","latitude":40.71,"longitude":-74.00,"city":"NYC"}`, time.Now().UnixNano()), orgTok)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create venue: expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 	venueID := idFromCreate(t, rec, "id")
 	rec = doJSON(t, h, http.MethodPost, "/api/v1/events",
-		fmt.Sprintf(`{"title":"Event %d","starts_at":%q,"venue_id":%q,"price_is_free":true}`, time.Now().UnixNano()%1e6, start, venueID), orgTok)
+		fmt.Sprintf(`{"title":"Event %d","starts_at":%q,"venue_id":%q,"price_is_free":true}`, time.Now().UnixNano(), start, venueID), orgTok)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create event: expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -122,7 +122,7 @@ func TestPaginationCustomLimit(t *testing.T) {
 // events and asserts each event appears exactly once (no dupes, no gaps).
 func TestPaginationEventsStableOrder(t *testing.T) {
 	_, h := newTestApp(t)
-	orgTok, _ := promoteOrganizer(t, h, "pgorg", fmt.Sprintf("Page Collective %d", time.Now().UnixNano()%1e6))
+	orgTok, _ := promoteOrganizer(t, h, "pgorg", fmt.Sprintf("Page Collective %d", time.Now().UnixNano()))
 
 	const total = 7
 	base := time.Now().Add(48 * time.Hour).UTC()
@@ -170,7 +170,7 @@ func TestPaginationEventsStableOrder(t *testing.T) {
 // TestPaginationHasNextBoundary checks has_next flips correctly at a page edge.
 func TestPaginationHasNextBoundary(t *testing.T) {
 	_, h := newTestApp(t)
-	orgTok, _ := promoteOrganizer(t, h, "pghn", fmt.Sprintf("BN Org %d", time.Now().UnixNano()%1e6))
+	orgTok, _ := promoteOrganizer(t, h, "pghn", fmt.Sprintf("BN Org %d", time.Now().UnixNano()))
 
 	base := time.Now().Add(72 * time.Hour).UTC()
 	createPublishedEvent(t, h, orgTok, base.Add(1*time.Hour).Format(time.RFC3339))

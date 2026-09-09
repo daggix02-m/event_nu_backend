@@ -39,12 +39,20 @@ idempotency, and the worker.
   and the suite still passes — a skipped test is not the same as a green DB test,
   so CI always runs against a real Postgres service (see the CI workflow).
 
-Local workflow:
+Local workflow (Docker required) — boots the same Postgres 16 CI uses, creates
+the non-superuser `app_user` role, applies migrations, then runs the full gate:
 
 ```sh
-export DATABASE_URL="postgres://app_user:...@localhost:5432/event_nu?sslmode=require"
-make test
+make db-up
+make ci
 ```
+
+- `make db-up` is safe to re-run; `make db-down && make db-up` starts from a
+  clean database to match CI exactly.
+- The Makefile defaults `DATABASE_URL`, `DATABASE_ADMIN_URL`, `JWT_SECRET`, and
+  `EMAIL_PROVIDER` to CI-equivalent values; any already-exported value wins.
+- Without Docker, export the same four variables against your own Postgres
+  (following the workflow below) and run `make ci` directly.
 
 ## CI quality gates (phase-01)
 

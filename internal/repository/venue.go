@@ -53,6 +53,18 @@ func (r *VenueRepository) GetByID(ctx context.Context, id string) (*domain.Venue
 		FROM venues WHERE id = $1 AND deleted_at IS NULL`, id))
 }
 
+// Update edits the editable venue fields. Ownership is enforced upstream (the
+// venue's organizer must belong to the caller); RLS is the backstop.
+func (r *VenueRepository) Update(ctx context.Context, v *domain.Venue) (*domain.Venue, error) {
+	return scanVenue(r.q(ctx).QueryRow(ctx, `
+		UPDATE venues SET
+			name = $2, address = $3, latitude = $4, longitude = $5, place_id = $6,
+			city = $7, country_code = $8, updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING `+venueColumns,
+		v.ID, v.Name, v.Address, v.Latitude, v.Longitude, v.PlaceID, v.City, v.CountryCode))
+}
+
 func (r *VenueRepository) ListActive(ctx context.Context, limit, offset int) ([]*domain.Venue, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT `+venueColumns+`

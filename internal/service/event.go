@@ -6,19 +6,45 @@ import (
 	"strings"
 
 	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
 	"github.com/daggix02-m/event_nu/backend/internal/shared"
 	"github.com/daggix02-m/event_nu/backend/internal/validator"
 )
 
-type EventService struct {
-	events *repository.EventRepository
-	venues *repository.VenueRepository
-	cats   *repository.CategoryRepository
-	orgs   *repository.OrganizerRepository
+// The stores below are the repository surfaces EventService depends on, kept
+// as interfaces (mirroring AuthService.userStore) so unit tests can stub them
+// without a database. The concrete repositories satisfy them implicitly.
+type eventStore interface {
+	GetByID(ctx context.Context, id string) (*domain.Event, error)
+	Create(ctx context.Context, e *domain.Event) (*domain.Event, error)
+	Update(ctx context.Context, e *domain.Event) (*domain.Event, error)
+	UpdateStatus(ctx context.Context, id, status string) error
+	SetModeration(ctx context.Context, id, moderation string) error
+	ListVisible(ctx context.Context, filters domain.EventFilters, limit, offset int) ([]*domain.Event, error)
+	CountVisible(ctx context.Context, filters domain.EventFilters) (int, error)
+	ListByVenue(ctx context.Context, venueID string, limit, offset int) ([]*domain.Event, error)
+	CountByVenue(ctx context.Context, venueID string) (int, error)
 }
 
-func NewEventService(events *repository.EventRepository, venues *repository.VenueRepository, cats *repository.CategoryRepository, orgs *repository.OrganizerRepository) *EventService {
+type venueStore interface {
+	Create(ctx context.Context, v *domain.Venue) (*domain.Venue, error)
+	GetByID(ctx context.Context, id string) (*domain.Venue, error)
+	Update(ctx context.Context, v *domain.Venue) (*domain.Venue, error)
+	ListActive(ctx context.Context, limit, offset int) ([]*domain.Venue, error)
+	CountActive(ctx context.Context) (int, error)
+}
+
+type categoryStore interface {
+	List(ctx context.Context) ([]*domain.Category, error)
+}
+
+type EventService struct {
+	events eventStore
+	venues venueStore
+	cats   categoryStore
+	orgs   organizerStore
+}
+
+func NewEventService(events eventStore, venues venueStore, cats categoryStore, orgs organizerStore) *EventService {
 	return &EventService{events: events, venues: venues, cats: cats, orgs: orgs}
 }
 
@@ -148,13 +174,13 @@ func (s *EventService) GetEvent(ctx context.Context, id string) (*domain.Event, 
 	return s.events.GetByID(ctx, id)
 }
 
-func (s *EventService) ListEvents(ctx context.Context, page, limit int) (PageResult[*domain.Event], error) {
+func (s *EventService) ListEvents(ctx context.Context, filters domain.EventFilters, page, limit int) (PageResult[*domain.Event], error) {
 	offset := (page - 1) * limit
-	items, err := s.events.ListVisible(ctx, limit, offset)
+	items, err := s.events.ListVisible(ctx, filters, limit, offset)
 	if err != nil {
 		return PageResult[*domain.Event]{}, err
 	}
-	total, err := s.events.CountVisible(ctx)
+	total, err := s.events.CountVisible(ctx, filters)
 	if err != nil {
 		return PageResult[*domain.Event]{}, err
 	}
