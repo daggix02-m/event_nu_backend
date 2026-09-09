@@ -86,7 +86,7 @@ func TestApproveSuccess(t *testing.T) {
 	_, h := newTestApp(t)
 
 	_, orgTok, orgUserID := registerAndToken(t, h, "appr")
-	appID := applyForOrganizer(t, h, orgTok, fmt.Sprintf("Atomic Collective %d", time.Now().UnixNano()%1e6))
+	appID := applyForOrganizer(t, h, orgTok, fmt.Sprintf("Atomic Collective %d", time.Now().UnixNano()))
 	adminTok, _ := adminApproveToken(t, h, "adm")
 
 	rec := doJSON(t, h, http.MethodPost, "/api/v1/admin/organizer-applications/"+appID+"/approve",
@@ -108,7 +108,7 @@ func TestApproveDuplicate(t *testing.T) {
 	_, h := newTestApp(t)
 
 	_, orgTok, orgUserID := registerAndToken(t, h, "dupp")
-	appID := applyForOrganizer(t, h, orgTok, fmt.Sprintf("Dup Collective %d", time.Now().UnixNano()%1e6))
+	appID := applyForOrganizer(t, h, orgTok, fmt.Sprintf("Dup Collective %d", time.Now().UnixNano()))
 	adminTok, _ := adminApproveToken(t, h, "adm")
 
 	rec := doJSON(t, h, http.MethodPost, "/api/v1/admin/organizer-applications/"+appID+"/approve", `{}`, adminTok)
@@ -135,7 +135,7 @@ func TestApproveRollbackOnOrganizerCreateFailure(t *testing.T) {
 	// Seed an organizer that already owns the target slug, so the create inside
 	// approve hits the unique constraint. The name is unique per run to avoid
 	// clashing with rows left by earlier gate runs on the shared dev DB.
-	collisionName := fmt.Sprintf("Collision Club %d", time.Now().UnixNano()%1e6)
+	collisionName := fmt.Sprintf("Collision Club %d", time.Now().UnixNano())
 	_, firstTok, _ := registerAndToken(t, h, "collide")
 	firstAppID := applyForOrganizer(t, h, firstTok, collisionName)
 	firstAdminTok, _ := adminApproveToken(t, h, "adm")
@@ -166,7 +166,7 @@ func TestApproveConcurrentSingleWinner(t *testing.T) {
 	_, h := newTestApp(t)
 
 	_, orgTok, orgUserID := registerAndToken(t, h, "apro")
-	appID := applyForOrganizer(t, h, orgTok, fmt.Sprintf("Race Collective %d", time.Now().UnixNano()%1e6))
+	appID := applyForOrganizer(t, h, orgTok, fmt.Sprintf("Race Collective %d", time.Now().UnixNano()))
 	adminTok, _ := adminApproveToken(t, h, "adm")
 
 	const n = 2
@@ -212,7 +212,7 @@ func TestRejectSuccess(t *testing.T) {
 	_, h := newTestApp(t)
 
 	_, orgTok, _ := registerAndToken(t, h, "rejw")
-	appID := applyForOrganizer(t, h, orgTok, fmt.Sprintf("Reject Crew %d", time.Now().UnixNano()%1e6))
+	appID := applyForOrganizer(t, h, orgTok, fmt.Sprintf("Reject Crew %d", time.Now().UnixNano()))
 	adminTok, _ := adminApproveToken(t, h, "adm")
 
 	rec := doJSON(t, h, http.MethodPost, "/api/v1/admin/organizer-applications/"+appID+"/reject",

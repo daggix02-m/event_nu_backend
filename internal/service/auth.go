@@ -13,7 +13,6 @@ import (
 
 	"github.com/daggix02-m/event_nu/backend/internal/config"
 	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
 	"github.com/daggix02-m/event_nu/backend/internal/shared"
 	"github.com/daggix02-m/event_nu/backend/internal/validator"
 	"github.com/golang-jwt/jwt/v5"
@@ -50,15 +49,25 @@ type userStore interface {
 	Create(ctx context.Context, email, passwordHash, username string) (*domain.User, error)
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	GetByID(ctx context.Context, id string) (*domain.User, error)
+	UpdateProfile(ctx context.Context, id string, username, bio, photoURL *string) (*domain.User, error)
+}
+
+// sessionStore is the session-repository surface AuthService depends on, kept
+// as an interface so unit tests can stub rotation/revocation without a
+// database.
+type sessionStore interface {
+	Create(ctx context.Context, s *domain.Session) error
+	ConsumeForRotation(ctx context.Context, refreshHash string) (*domain.Session, error)
+	Revoke(ctx context.Context, refreshHash string) error
 }
 
 type AuthService struct {
 	users    userStore
-	sessions *repository.SessionRepository
+	sessions sessionStore
 	config   config.Config
 }
 
-func NewAuthService(users userStore, sessions *repository.SessionRepository, cfg config.Config) *AuthService {
+func NewAuthService(users userStore, sessions sessionStore, cfg config.Config) *AuthService {
 	return &AuthService{users: users, sessions: sessions, config: cfg}
 }
 
@@ -176,6 +185,40 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 // GetUser returns a non-deleted user by ID.
 func (s *AuthService) GetUser(ctx context.Context, id string) (*domain.User, error) {
 	user, err := s.users.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// UpdateProfile validates and applies a partial profile update for the caller.
+// Nil pointers mean "leave unchanged"; a request that changes nothing (all
+// three nil) is rejected as a validation error before hitting the database.
+func (s *AuthService) UpdateProfile(ctx context.Context, userID string, username, bio, photoURL *string) (*domain.User, error) {
+	if username == nil && bio == nil && photoURL == nil {
+		return nil, shared.NewAppError("validation_error", "nothing to update", http.StatusUnprocessableEntity)
+	}
+
+	v := validator.New()
+	if username != nil {
+		v.Required(*username, "username")
+		v.MinChars(*username, 3, "username")
+		v.MaxChars(*username, 32, "username")
+	}
+	if bio != nil {
+		v.MaxChars(*bio, 500, "bio")
+	}
+	if photoURL != nil {
+		v.MaxChars(*photoURL, 1000, "photo_url")
+	}
+	if !v.Valid() {
+		return nil, shared.NewAppError("validation_error", firstFieldError(v), http.StatusUnprocessableEntity)
+	}
+	if username != nil {
+		*username = strings.TrimSpace(*username)
+	}
+
+	user, err := s.users.UpdateProfile(ctx, userID, username, bio, photoURL)
 	if err != nil {
 		return nil, err
 	}

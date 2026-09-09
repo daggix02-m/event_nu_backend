@@ -107,6 +107,27 @@ func (h *AuthHandlers) Me(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, toUserDTO(user))
 }
 
+// UpdateMe applies a partial profile update for the authenticated user.
+func (h *AuthHandlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserID(r.Context())
+	if userID == "" {
+		h.app.ClientError(w, r, http.StatusUnauthorized, "unauthorized", "Authentication required.")
+		return
+	}
+
+	var req dto.UpdateProfileRequest
+	if err := shared.DecodeJSON(w, r, &req); err != nil {
+		h.app.ClientError(w, r, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	user, err := h.auth.UpdateProfile(r.Context(), userID, req.Username, req.Bio, req.PhotoURL)
+	if err != nil {
+		h.app.AppError(w, r, err)
+		return
+	}
+	shared.WriteJSON(w, http.StatusOK, toUserDTO(user))
+}
+
 func (h *AuthHandlers) writeAuthResponse(w http.ResponseWriter, r *http.Request, session *service.UserSession) {
 	resp := dto.AuthResponse{
 		User:         toUserDTO(session.User),

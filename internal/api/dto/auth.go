@@ -38,3 +38,12 @@ type AuthResponse struct {
 	RefreshToken string  `json:"refresh_token"`
 	ExpiresIn    int64   `json:"expires_in_seconds"`
 }
+
+// UpdateProfileRequest is a PATCH body for /users/me: every field is optional,
+// nil means "leave unchanged". An empty body (all nil) is rejected as a
+// validation error so the request is never a silent no-op.
+type UpdateProfileRequest struct {
+	Username *string `json:"username"`
+	Bio      *string `json:"bio"`
+	PhotoURL *string `json:"photo_url"`
+}

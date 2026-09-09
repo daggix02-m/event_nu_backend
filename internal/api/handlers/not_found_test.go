@@ -20,7 +20,7 @@ func TestWellFormedMissingUUIDIs404(t *testing.T) {
 	rec := doJSON(t, h, http.MethodGet, "/api/v1/events/"+missing, "", "")
 	assertNotFound(t, "event detail", rec)
 
-	orgTok, _ := promoteOrganizer(t, h, "nfo", fmt.Sprintf("nf-%d", time.Now().UnixNano()%1000000))
+	orgTok, _ := promoteOrganizer(t, h, "nfo", fmt.Sprintf("nf-%d", time.Now().UnixNano()))
 	rec = doJSON(t, h, http.MethodPatch, "/api/v1/events/"+missing,
 		`{"title":"nope","starts_at":"2030-01-01T12:00:00Z","price_is_free":true}`, orgTok)
 	assertNotFound(t, "update event", rec)

@@ -17,6 +17,8 @@ import (
 type EventHandlers struct {
 	app   *api.Application
 	event *service.EventService
+	likes *service.LikeService
+	saves *service.SaveService
 }
 
 var (
@@ -34,8 +36,8 @@ func (e *fieldError) Error() string {
 	return "body contains incorrect JSON type for field \"" + e.field + "\""
 }
 
-func NewEventHandlers(app *api.Application, event *service.EventService) *EventHandlers {
-	return &EventHandlers{app: app, event: event}
+func NewEventHandlers(app *api.Application, event *service.EventService, likes *service.LikeService, saves *service.SaveService) *EventHandlers {
+	return &EventHandlers{app: app, event: event, likes: likes, saves: saves}
 }
 
 func (h *EventHandlers) CreateVenue(w http.ResponseWriter, r *http.Request) {
@@ -153,7 +155,7 @@ func (h *EventHandlers) GetEvent(w http.ResponseWriter, r *http.Request) {
 		h.app.AppError(w, r, err)
 		return
 	}
-	shared.WriteJSON(w, http.StatusOK, toEventDTO(event))
+	h.writeEventDetail(w, r, event)
 }
 
 func (h *EventHandlers) ListEvents(w http.ResponseWriter, r *http.Request) {
@@ -161,14 +163,18 @@ func (h *EventHandlers) ListEvents(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	result, err := h.event.ListEvents(r.Context(), page, limit)
+	filters, ok := parseEventFilters(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.event.ListEvents(r.Context(), filters, page, limit)
 	if err != nil {
 		h.app.AppError(w, r, err)
 		return
 	}
 	out := make([]dto.EventDTO, 0, len(result.Items))
 	for _, e := range result.Items {
-		out = append(out, toEventDTO(e))
+		out = append(out, h.enrichedEventDTO(r, e))
 	}
 	writePaginated(w, http.StatusOK, out, dto.PaginationMeta{
 		Page:    page,
@@ -176,6 +182,75 @@ func (h *EventHandlers) ListEvents(w http.ResponseWriter, r *http.Request) {
 		Total:   result.Total,
 		HasNext: page*limit < result.Total,
 	})
+}
+
+func (h *EventHandlers) AddLike(w http.ResponseWriter, r *http.Request) {
+	id, ok := ParseUUIDParam(r, "id")
+	if !ok {
+		h.app.NotFound(w, r)
+		return
+	}
+	err := h.likes.Add(r.Context(), middleware.UserID(r.Context()), id)
+	if err != nil {
+		h.app.AppError(w, r, err)
+		return
+	}
+	h.writeLikeState(w, r, id)
+}
+
+func (h *EventHandlers) RemoveLike(w http.ResponseWriter, r *http.Request) {
+	id, ok := ParseUUIDParam(r, "id")
+	if !ok {
+		h.app.NotFound(w, r)
+		return
+	}
+	err := h.likes.Remove(r.Context(), middleware.UserID(r.Context()), id)
+	if err != nil {
+		h.app.AppError(w, r, err)
+		return
+	}
+	h.writeLikeState(w, r, id)
+}
+
+// writeEventDetail writes a single event with like state resolved for the
+// requesting user (anonymous requests get liked_by_me=false).
+func (h *EventHandlers) writeEventDetail(w http.ResponseWriter, r *http.Request, e *domain.Event) {
+	shared.WriteJSON(w, http.StatusOK, h.enrichedEventDTO(r, e))
+}
+
+func (h *EventHandlers) enrichedEventDTO(r *http.Request, e *domain.Event) dto.EventDTO {
+	out := toEventDTO(e)
+	if h.likes == nil {
+		return out
+	}
+	count, liked, err := h.likes.State(r.Context(), e.ID, middleware.UserID(r.Context()))
+	if err != nil {
+		// A like-count hiccup must not fail the whole event payload; leave the
+		// defaults (0,false) and report it instead.
+		h.app.Logger.Warn("event-like state unavailable", "event_id", e.ID, "error", err.Error())
+		return out
+	}
+	out.LikeCount = count
+	out.LikedByMe = liked
+	if h.saves != nil {
+		saved, folderID, err := h.saves.State(r.Context(), middleware.UserID(r.Context()), e.ID)
+		if err != nil {
+			h.app.Logger.Warn("event-save state unavailable", "event_id", e.ID, "error", err.Error())
+			return out
+		}
+		out.SavedByMe = saved
+		out.SavedFolderID = folderID
+	}
+	return out
+}
+
+func (h *EventHandlers) writeLikeState(w http.ResponseWriter, r *http.Request, eventID string) {
+	count, liked, err := h.likes.State(r.Context(), eventID, middleware.UserID(r.Context()))
+	if err != nil {
+		h.app.AppError(w, r, err)
+		return
+	}
+	shared.WriteJSON(w, http.StatusOK, dto.LikeState{Liked: liked, LikeCount: count})
 }
 
 func parseEventRequest(w http.ResponseWriter, r *http.Request) (*domain.Event, error) {
@@ -248,6 +323,54 @@ const (
 	defaultLimit = 20
 	maxLimit     = 100
 )
+
+// parseEventFilters reads the optional /events search params:
+//
+//	q         — full-text query over title+description
+//	category  — category id
+//	date_from / date_to — start-time window (RFC3339)
+//	lat, lng, radius — geo proximity filter (radius in km; all three required)
+//
+// Returns whether the params parsed (invalid values write a 400).
+func parseEventFilters(w http.ResponseWriter, r *http.Request) (domain.EventFilters, bool) {
+	q := r.URL.Query()
+
+	var f domain.EventFilters
+	f.Query = q.Get("q")
+	f.CategoryID = q.Get("category")
+
+	if v := q.Get("date_from"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			shared.WriteErrorJSON(w, http.StatusBadRequest, "bad_request", "date_from must be an RFC3339 timestamp")
+			return f, false
+		}
+		f.DateFrom = &t
+	}
+	if v := q.Get("date_to"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			shared.WriteErrorJSON(w, http.StatusBadRequest, "bad_request", "date_to must be an RFC3339 timestamp")
+			return f, false
+		}
+		f.DateTo = &t
+	}
+
+	latStr, latOk := q.Get("lat"), q.Get("lat") != ""
+	lngStr, lngOk := q.Get("lng"), q.Get("lng") != ""
+	radiusStr, radiusOk := q.Get("radius"), q.Get("radius") != ""
+	if latOk || lngOk || radiusOk {
+		lat, err1 := strconv.ParseFloat(latStr, 64)
+		lng, err2 := strconv.ParseFloat(lngStr, 64)
+		radius, err3 := strconv.ParseFloat(radiusStr, 64)
+		if err1 != nil || err2 != nil || err3 != nil || radius <= 0 {
+			shared.WriteErrorJSON(w, http.StatusBadRequest, "bad_request", "lat, lng and a positive radius are required together for proximity search")
+			return f, false
+		}
+		f.Latitude, f.Longitude, f.RadiusKM = &lat, &lng, &radius
+	}
+	return f, true
+}
 
 // parsePagination reads page/limit query params, validates them, and writes a
 // 400 if invalid. Returns page, limit, and whether parsing succeeded.

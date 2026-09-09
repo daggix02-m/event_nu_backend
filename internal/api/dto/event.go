@@ -31,5 +31,9 @@ type EventDTO struct {
 	Status           string     `json:"status"`
 	ModerationStatus string     `json:"moderation_status"`
 	MaxAttendees     *int       `json:"max_attendees"`
+	LikeCount        int        `json:"like_count"`
+	LikedByMe        bool       `json:"liked_by_me"`
+	SavedByMe        bool       `json:"saved_by_me"`
+	SavedFolderID    *string    `json:"saved_folder_id"`
 	CreatedAt        time.Time  `json:"created_at"`
 }

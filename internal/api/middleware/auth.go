@@ -70,6 +70,31 @@ func RequireAdmin(auth *service.AuthService) func(http.Handler) http.Handler {
 	}
 }
 
+// OptionalAuth authenticates the request when a Bearer token is present but
+// never rejects anonymous callers. Used on public read routes that surface
+// per-user state (e.g. liked_by_me): a valid token personalizes the response,
+// a missing/invalid one degrades to the anonymous view instead of 401.
+func OptionalAuth(auth *service.AuthService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			header := r.Header.Get("Authorization")
+			if header == "" || !strings.HasPrefix(header, "Bearer ") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			token := strings.TrimPrefix(header, "Bearer ")
+			userID, _, err := auth.ParseAccessToken(token)
+			if err != nil {
+				// Invalid token on an optional route: treat as anonymous.
+				next.ServeHTTP(w, r)
+				return
+			}
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 func parseToken(w http.ResponseWriter, r *http.Request, auth *service.AuthService) (string, string, bool) {
 	header := r.Header.Get("Authorization")
 	if !strings.HasPrefix(header, "Bearer ") {

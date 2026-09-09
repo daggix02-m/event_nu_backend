@@ -41,7 +41,7 @@ func doJSONKey(t *testing.T, h http.Handler, method, path, body, token, idemKey 
 // already-registered user and returns a venue they own.
 func approveOrganizerAndVenue(t *testing.T, h http.Handler, orgTok, userID string) string {
 	t.Helper()
-	orgName := fmt.Sprintf("Idem Org %d", time.Now().UnixNano()%1e6)
+	orgName := fmt.Sprintf("Idem Org %d", time.Now().UnixNano())
 	rec := doJSON(t, h, http.MethodPost, "/api/v1/organizer-applications",
 		fmt.Sprintf(`{"requested_name":%q,"bio":"idempotency fixture"}`, orgName), orgTok)
 	if rec.Code != http.StatusCreated {

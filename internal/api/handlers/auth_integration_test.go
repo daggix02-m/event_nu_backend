@@ -280,7 +280,7 @@ func TestRegisterBoundaryValidation(t *testing.T) {
 
 	// Boundary: exactly 8-char password and 3-char username pass.
 	email := fmt.Sprintf("boundary+%d@test.example", time.Now().UnixNano())
-	uname := fmt.Sprintf("u%d", time.Now().UnixNano()%1000)
+	uname := fmt.Sprintf("u%d", time.Now().UnixNano())
 	rec := doJSON(t, h, http.MethodPost, "/api/v1/auth/register",
 		fmt.Sprintf(`{"email":%q,"password":"12345678","username":%q}`, email, uname), "")
 	if rec.Code != http.StatusOK {

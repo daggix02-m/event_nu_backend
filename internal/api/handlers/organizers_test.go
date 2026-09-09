@@ -22,7 +22,7 @@ type tokenResponse struct {
 func registerAndToken(t *testing.T, h http.Handler, prefix string) (email, token, userID string) {
 	t.Helper()
 	email = fmt.Sprintf("%s+%d@test.example", prefix, time.Now().UnixNano())
-	uname := fmt.Sprintf("%s%d", prefix[:3], time.Now().UnixNano()%1e6)
+	uname := fmt.Sprintf("%s%d", prefix[:3], time.Now().UnixNano())
 	rec := doJSON(t, h, http.MethodPost, "/api/v1/auth/register",
 		fmt.Sprintf(`{"email":%q,"password":"password123","username":%q}`, email, uname), "")
 	if rec.Code != http.StatusOK {
@@ -100,7 +100,7 @@ func TestOrganizerVenueEventSlice(t *testing.T) {
 
 	// --- Organizer application flow ---
 	_, orgTok, _ := registerAndToken(t, h, "org")
-	orgName := fmt.Sprintf("Nightlife Collective %d", time.Now().UnixNano()%1e6)
+	orgName := fmt.Sprintf("Nightlife Collective %d", time.Now().UnixNano())
 
 	rec := doJSON(t, h, http.MethodPost, "/api/v1/organizer-applications",
 		fmt.Sprintf(`{"requested_name":%q,"bio":"We throw parties"}`, orgName), orgTok)
@@ -212,7 +212,7 @@ func TestOrganizerVenueEventSlice(t *testing.T) {
 	// --- Another organizer cannot edit this event ---
 	_, otherOrgTok, _ := registerAndToken(t, h, "other")
 	rec = doJSON(t, h, http.MethodPost, "/api/v1/organizer-applications",
-		fmt.Sprintf(`{"requested_name":"Second Crew %d"}`, time.Now().UnixNano()%1e6), otherOrgTok)
+		fmt.Sprintf(`{"requested_name":"Second Crew %d"}`, time.Now().UnixNano()), otherOrgTok)
 	otherAppID := idFromCreate(t, rec, "id")
 	rec = doJSON(t, h, http.MethodPost, "/api/v1/admin/organizer-applications/"+otherAppID+"/approve", `{}`, adminTok)
 	if rec.Code != http.StatusOK {
@@ -261,7 +261,7 @@ func TestAdminStaleRoleRecheck(t *testing.T) {
 
 	// Create an organizer application to approve.
 	_, orgTok, _ := registerAndToken(t, h, "orgsr")
-	orgName := fmt.Sprintf("Stale Role Org %d", time.Now().UnixNano()%1e6)
+	orgName := fmt.Sprintf("Stale Role Org %d", time.Now().UnixNano())
 	rec := doJSON(t, h, http.MethodPost, "/api/v1/organizer-applications",
 		fmt.Sprintf(`{"requested_name":%q,"bio":"test"}`, orgName), orgTok)
 	if rec.Code != http.StatusCreated {

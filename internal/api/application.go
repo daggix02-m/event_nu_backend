@@ -22,10 +22,22 @@ type Application struct {
 	// endpoints. Created per app instance so tests get isolated state.
 	RateLimiter *middleware.Limiter
 
-	Auth  *service.AuthService
-	Email *service.EmailService
-	Org   *service.OrganizerService
-	Event *service.EventService
+	Auth    *service.AuthService
+	Email   *service.EmailService
+	Org     *service.OrganizerService
+	Event   *service.EventService
+	Comment *service.CommentService
+	Like    *service.LikeService
+	Save    *service.SaveService
+	Share   *service.ShareService
+	Follow  *service.FollowService
+	Rsvp    *service.RsvpService
+	Review  *service.ReviewService
+	Report  *service.ReportService
+	Notify  *service.NotificationService
+	Remind  *service.ReminderService
+	Venue   *service.VenueService
+	Admin   *service.AdminService
 
 	// Idempotency backs the client-retryable write middleware. Repositories
 	// read the request tx from context, so records share the guarded write's
@@ -46,8 +58,18 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 	venues := repository.NewVenueRepository(pool)
 	cats := repository.NewCategoryRepository(pool)
 	events := repository.NewEventRepository(pool)
+	comments := repository.NewCommentRepository(pool)
+	likes := repository.NewLikeRepository(pool)
+	saves := repository.NewSaveRepository(pool)
+	shares := repository.NewShareRepository(pool)
+	follows := repository.NewFollowRepository(pool)
+	rsvps := repository.NewRsvpRepository(pool)
+	reviews := repository.NewReviewRepository(pool)
+	reports := repository.NewReportRepository(pool)
+	notifier := repository.NewNotificationRepository(pool)
+	reminders := repository.NewReminderRepository(pool)
 
-	return &Application{
+	app := &Application{
 		Logger:      logger,
 		Config:      cfg,
 		DB:          pool,
@@ -56,7 +78,27 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Email:       service.NewEmailService(outbox, codes, users, cfg),
 		Org:         service.NewOrganizerService(orgs),
 		Event:       service.NewEventService(events, venues, cats, orgs),
+		Comment:     service.NewCommentService(comments, events),
+		Like:        service.NewLikeService(likes, events),
+		Save:        service.NewSaveService(saves, events),
+		Share:       service.NewShareService(shares, events),
+		Follow:      service.NewFollowService(follows, orgs),
+		Rsvp:        service.NewRsvpService(rsvps, events),
+		Review:      service.NewReviewService(reviews, rsvps, events),
+		Report:      service.NewReportService(reports, events, venues, comments),
+		Notify:      service.NewNotificationService(notifier, events, orgs),
+		Remind:      service.NewReminderService(reminders, events),
+		Venue:       service.NewVenueService(venues, events, orgs),
+		Admin:       service.NewAdminService(reports, events),
 		Idempotency: repository.NewIdempotencyRepository(pool),
 		Metrics:     metrics.NewRegistry(),
 	}
+
+	// Notification fan-out hooks: every create that should notify someone runs
+	// through these nil-safe notifiers (they are no-ops when not wired).
+	app.Comment.SetNotifier(app.Notify)
+	app.Rsvp.SetNotifier(app.Notify)
+	app.Follow.SetNotifier(app.Notify)
+
+	return app
 }

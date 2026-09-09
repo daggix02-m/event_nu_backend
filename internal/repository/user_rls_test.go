@@ -65,7 +65,7 @@ func seedRLSUser(t *testing.T, pool *pgxpool.Pool) *string {
 	t.Helper()
 	users := NewUserRepository(pool)
 	email := fmt.Sprintf("rls+%d@test.example", time.Now().UnixNano())
-	user, err := users.Create(context.Background(), email, "x", "rls"+fmt.Sprint(time.Now().UnixNano()%1e6))
+	user, err := users.Create(context.Background(), email, "x", "rls"+fmt.Sprint(time.Now().UnixNano()))
 	if err != nil {
 		t.Fatalf("seed user: %v", err)
 	}

@@ -73,7 +73,7 @@ func emailService(t *testing.T, pool *pgxpool.Pool, templates map[string]int) *E
 func createTestUser(t *testing.T, pool *pgxpool.Pool) *domain.User {
 	t.Helper()
 	email := fmt.Sprintf("email+%d@test.example", time.Now().UnixNano())
-	user, err := repository.NewUserRepository(pool).Create(context.Background(), email, "x", "user"+fmt.Sprint(time.Now().UnixNano()%1e6))
+	user, err := repository.NewUserRepository(pool).Create(context.Background(), email, "x", "user"+fmt.Sprint(time.Now().UnixNano()))
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}

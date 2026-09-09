@@ -54,6 +54,90 @@ func TestLoadBrevoProviderRequiresKey(t *testing.T) {
 	}
 }
 
+func TestLoadBrevoProviderRequiresSender(t *testing.T) {
+	setEnv(t, map[string]string{
+		"DATABASE_URL":     "postgres://localhost/db",
+		"JWT_SECRET":       "secret",
+		"EMAIL_PROVIDER":   "brevo",
+		"BREVO_API_KEY":    "key",
+		"BREVO_API_SENDER": "", // must be cleared: .env may set it
+	})
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "BREVO_API_SENDER") {
+		t.Fatalf("expected BREVO_API_SENDER error, got %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidTemplateInt(t *testing.T) {
+	setEnv(t, map[string]string{
+		"DATABASE_URL":           "postgres://localhost/db",
+		"JWT_SECRET":             "secret",
+		"EMAIL_PROVIDER":         "noop",
+		"BREVO_TEMPLATE_WELCOME": "not-a-number",
+	})
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "BREVO_TEMPLATE_WELCOME") {
+		t.Fatalf("expected BREVO_TEMPLATE_WELCOME error, got %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidJWTExpiry(t *testing.T) {
+	setEnv(t, map[string]string{
+		"DATABASE_URL": "postgres://localhost/db",
+		"JWT_SECRET":   "secret",
+		"JWT_EXPIRY":   "soon",
+	})
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "JWT_EXPIRY") {
+		t.Fatalf("expected JWT_EXPIRY error, got %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidRefreshExpiry(t *testing.T) {
+	setEnv(t, map[string]string{
+		"DATABASE_URL":         "postgres://localhost/db",
+		"JWT_SECRET":           "secret",
+		"REFRESH_TOKEN_EXPIRY": "not-a-duration",
+	})
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "REFRESH_TOKEN_EXPIRY") {
+		t.Fatalf("expected REFRESH_TOKEN_EXPIRY error, got %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidEmailPollInterval(t *testing.T) {
+	setEnv(t, map[string]string{
+		"DATABASE_URL":        "postgres://localhost/db",
+		"JWT_SECRET":          "secret",
+		"EMAIL_POLL_INTERVAL": "fast",
+	})
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "EMAIL_POLL_INTERVAL") {
+		t.Fatalf("expected EMAIL_POLL_INTERVAL error, got %v", err)
+	}
+}
+
+func TestLoadParsesCORSAllowedOrigins(t *testing.T) {
+	setEnv(t, map[string]string{
+		"DATABASE_URL":         "postgres://localhost/db",
+		"JWT_SECRET":           "secret",
+		"CORS_ALLOWED_ORIGINS": "https://app.example.com, https://admin.example.com ,",
+	})
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"https://app.example.com", "https://admin.example.com"}
+	if len(cfg.CORSAllowedOrigins) != len(want) {
+		t.Fatalf("expected %d origins, got %v", len(want), cfg.CORSAllowedOrigins)
+	}
+	for i := range want {
+		if cfg.CORSAllowedOrigins[i] != want[i] {
+			t.Fatalf("origin[%d] = %q, want %q", i, cfg.CORSAllowedOrigins[i], want[i])
+		}
+	}
+}
+
 func TestLoadBrevoRequiresTemplates(t *testing.T) {
 	tests := []struct {
 		name     string

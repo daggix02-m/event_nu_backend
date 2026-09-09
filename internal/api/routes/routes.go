@@ -22,7 +22,18 @@ func New(app *api.Application) http.Handler {
 	auth := handlers.NewAuthHandlers(app, app.Auth)
 	email := handlers.NewEmailHandlers(app)
 	org := handlers.NewOrganizerHandlers(app, app.Org)
-	events := handlers.NewEventHandlers(app, app.Event)
+	events := handlers.NewEventHandlers(app, app.Event, app.Like, app.Save)
+	comments := handlers.NewCommentHandlers(app, app.Comment)
+	saves := handlers.NewSaveHandlers(app, app.Save)
+	shares := handlers.NewShareHandlers(app, app.Share)
+	follows := handlers.NewFollowHandlers(app, app.Follow)
+	rsvp := handlers.NewRsvpHandlers(app, app.Rsvp)
+	reviews := handlers.NewReviewHandlers(app, app.Review)
+	reports := handlers.NewReportHandlers(app, app.Report)
+	notes := handlers.NewNotificationHandlers(app, app.Notify)
+	reminders := handlers.NewReminderHandlers(app, app.Remind)
+	ven := handlers.NewVenueHandlers(app, app.Venue)
+	adminHandlers := handlers.NewAdminHandlers(app, app.Admin)
 
 	// Public/auth-critical routes run under the trusted 'service' role so RLS
 	// allows login/registration (identity does not exist yet at that point).
@@ -59,8 +70,20 @@ func New(app *api.Application) http.Handler {
 	}
 	mux.Handle("GET /api/v1/venues", public(events.ListVenues))
 	mux.Handle("GET /api/v1/categories", public(events.ListCategories))
-	mux.Handle("GET /api/v1/events", public(events.ListEvents))
-	mux.Handle("GET /api/v1/events/{id}", public(events.GetEvent))
+	// Event reads surface per-user like state, so they run with optional
+	// authentication: a valid Bearer token personalizes the response; missing
+	// or invalid tokens degrade to the anonymous view rather than 401.
+	optional := func(h http.HandlerFunc) http.Handler {
+		return middleware.OptionalAuth(app.Auth)(middleware.SetRLS(h))
+	}
+	mux.Handle("GET /api/v1/events", optional(events.ListEvents))
+	mux.Handle("GET /api/v1/events/{id}", optional(events.GetEvent))
+	mux.Handle("GET /api/v1/events/{id}/comments", public(comments.List))
+	mux.Handle("GET /api/v1/events/{id}/reviews", public(reviews.List))
+	mux.Handle("GET /api/v1/venues/{id}", public(ven.Get))
+	// Organizer profiles need follow-state personalization, so they also run
+	// under optional auth (anonymous readers get followed_by_me=false).
+	mux.Handle("GET /api/v1/organizers/{id}", optional(follows.GetOrganizer))
 
 	// Protected routes: authenticate, then apply RLS as the authenticated user.
 	protected := func(h http.HandlerFunc) http.Handler {
@@ -75,12 +98,50 @@ func New(app *api.Application) http.Handler {
 				middleware.Idempotency(app.Idempotency)(h)))
 	}
 	mux.Handle("GET /api/v1/users/me", protected(auth.Me))
+	mux.Handle("PATCH /api/v1/users/me", protected(auth.UpdateMe))
 	mux.Handle("POST /api/v1/organizer-applications", protectedIdem(org.Apply))
 	mux.Handle("GET /api/v1/organizer-applications/me", protected(org.GetMyApplication))
 	mux.Handle("POST /api/v1/venues", protectedIdem(events.CreateVenue))
 	mux.Handle("POST /api/v1/events", protectedIdem(events.CreateEvent))
 	mux.Handle("PATCH /api/v1/events/{id}", protected(events.UpdateEvent))
 	mux.Handle("POST /api/v1/events/{id}/publish", protected(events.Publish))
+	mux.Handle("POST /api/v1/events/{id}/comments", protected(comments.Create))
+	mux.Handle("PATCH /api/v1/comments/{id}", protected(comments.Update))
+	mux.Handle("DELETE /api/v1/comments/{id}", protected(comments.Delete))
+	mux.Handle("POST /api/v1/events/{id}/like", protected(events.AddLike))
+	mux.Handle("DELETE /api/v1/events/{id}/like", protected(events.RemoveLike))
+	mux.Handle("GET /api/v1/me/save-folders", protected(saves.ListFolders))
+	mux.Handle("POST /api/v1/me/save-folders", protectedIdem(saves.CreateFolder))
+	mux.Handle("PATCH /api/v1/me/save-folders/{id}", protected(saves.UpdateFolder))
+	mux.Handle("DELETE /api/v1/me/save-folders/{id}", protected(saves.DeleteFolder))
+	mux.Handle("GET /api/v1/me/saves", protected(saves.ListSaves))
+	mux.Handle("POST /api/v1/events/{id}/save", protected(saves.SaveEvent))
+	mux.Handle("DELETE /api/v1/events/{id}/save", protected(saves.UnsaveEvent))
+	mux.Handle("POST /api/v1/events/{id}/share", protectedIdem(shares.RecordShare))
+	mux.Handle("POST /api/v1/organizers/{id}/follow", protected(follows.Follow))
+	mux.Handle("DELETE /api/v1/organizers/{id}/follow", protected(follows.Unfollow))
+	mux.Handle("POST /api/v1/events/{id}/rsvp", protected(rsvp.Create))
+	mux.Handle("DELETE /api/v1/events/{id}/rsvp", protected(rsvp.Cancel))
+	mux.Handle("GET /api/v1/events/{id}/rsvp", protected(rsvp.State))
+	mux.Handle("GET /api/v1/me/rsvps", protected(rsvp.MyRsvps))
+	mux.Handle("POST /api/v1/events/{id}/reviews", protected(reviews.Create))
+	mux.Handle("PATCH /api/v1/reviews/{id}", protected(reviews.Update))
+	mux.Handle("DELETE /api/v1/reviews/{id}", protected(reviews.Delete))
+	// Reports: target id must be a UUID; the entity type is fixed per route.
+	mux.Handle("POST /api/v1/events/{id}/report", protected(reports.ReportTarget("event")))
+	mux.Handle("POST /api/v1/users/{id}/report", protected(reports.ReportTarget("user")))
+	mux.Handle("POST /api/v1/venues/{id}/report", protected(reports.ReportTarget("venue")))
+	mux.Handle("POST /api/v1/comments/{id}/report", protected(reports.ReportTarget("comment")))
+	// Notification inbox (dispatch arrives with the Phase 17 worker).
+	mux.Handle("GET /api/v1/notifications", protected(notes.List))
+	mux.Handle("POST /api/v1/notifications/{id}/read", protected(notes.Read))
+	mux.Handle("POST /api/v1/notifications/read-all", protected(notes.ReadAll))
+	// Event reminders (record-only until the dispatch worker in Phase 17).
+	mux.Handle("POST /api/v1/events/{id}/reminders", protected(reminders.Create))
+	mux.Handle("DELETE /api/v1/events/{id}/reminders", protected(reminders.Delete))
+	mux.Handle("GET /api/v1/me/reminders", protected(reminders.My))
+	// Venue editing (organizer-owned).
+	mux.Handle("PATCH /api/v1/venues/{id}", protected(ven.Update))
 
 	// Admin business actions stay in Go (they trigger side effects + audits).
 	admin := func(h http.HandlerFunc) http.Handler {
@@ -88,6 +149,10 @@ func New(app *api.Application) http.Handler {
 	}
 	mux.Handle("POST /api/v1/admin/organizer-applications/{id}/approve", admin(org.Approve))
 	mux.Handle("POST /api/v1/admin/organizer-applications/{id}/reject", admin(org.Reject))
+	mux.Handle("GET /api/v1/admin/reports", admin(adminHandlers.ListReports))
+	mux.Handle("POST /api/v1/admin/reports/{id}/resolve", admin(adminHandlers.ResolveReport))
+	mux.Handle("POST /api/v1/admin/events/{id}/block", admin(adminHandlers.BlockEvent))
+	mux.Handle("POST /api/v1/admin/events/{id}/restore", admin(adminHandlers.RestoreEvent))
 
 	allowed := make(map[string]struct{}, len(app.Config.CORSAllowedOrigins))
 	for _, o := range app.Config.CORSAllowedOrigins {

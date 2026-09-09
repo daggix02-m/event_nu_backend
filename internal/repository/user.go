@@ -91,3 +91,27 @@ func (r *UserRepository) UpdateVerified(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// UpdateProfile partially updates a user's public profile. Nil fields keep
+// their existing value (COALESCE), so callers PATCH only what changed. The
+// username conflict is surfaced as a 409 username_taken.
+func (r *UserRepository) UpdateProfile(ctx context.Context, id string, username, bio, photoURL *string) (*domain.User, error) {
+	row := r.q(ctx).QueryRow(ctx, `
+		UPDATE users
+		SET username  = COALESCE($2, username),
+		    bio       = COALESCE($3, bio),
+		    photo_url = COALESCE($4, photo_url),
+		    updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING `+userColumns, id, username, bio, photoURL)
+
+	user, err := scanUser(row)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_username_key" {
+			return nil, shared.WrapAppError(err, "username_taken", "This username is already taken.", 409)
+		}
+		return nil, err
+	}
+	return user, nil
+}
