@@ -302,9 +302,11 @@ func TestSearchAdminVenue(t *testing.T) {
 	}
 
 	// --- Date window ------------------------------------------------------
+	// limit=100 keeps the in-window event on page 1 even after repeated suite
+	// runs have accumulated other near-window events into the shared DB.
 	from := time.Now().Add(15 * time.Hour).UTC().Format(time.RFC3339)
 	to := time.Now().Add(25 * time.Hour).UTC().Format(time.RFC3339)
-	rec = doJSON(t, h, http.MethodGet, "/api/v1/events?date_from="+from+"&date_to="+to, "", "")
+	rec = doJSON(t, h, http.MethodGet, "/api/v1/events?date_from="+from+"&date_to="+to+"&limit=100", "", "")
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatalf("decode date window: %v", err)
 	}

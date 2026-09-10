@@ -109,6 +109,7 @@ above the `backend/` git root. See `.env.example` for the template.
 | `DATABASE_URL` | API/worker connection (transactions set RLS role; worker presets `service`) |
 | `DATABASE_ADMIN_URL` | Migration/owner connection |
 | `JWT_SECRET` | HMAC secret; `JWT_EXPIRY` (default `15m`), `REFRESH_TOKEN_EXPIRY` (default `30d`) |
+| `TICKET_QR_SECRET` | HMAC key for ticket QR payloads (defaults to `JWT_SECRET`); see `docs/ticket-qr-protocol.md` |
 | `EMAIL_PROVIDER` | `brevo` or `noop` (default `noop`) |
 | `BREVO_API_KEY` | v3 API key (`xkeysib-...`) |
 | `BREVO_API_BASE` | Defaults to `https://api.brevo.com` |

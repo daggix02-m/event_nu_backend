@@ -40,6 +40,7 @@ type Application struct {
 	Venue   *service.VenueService
 	Admin   *service.AdminService
 	Media   *service.MediaService
+	Order   *service.OrderService
 
 	// Storage backs the media pipeline (local files for dev/tests, S3/R2 for
 	// production). Exposed so handlers/workers can reach it when needed.
@@ -112,6 +113,7 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Venue:       service.NewVenueService(venues, events, orgs),
 		Admin:       service.NewAdminService(reports, events),
 		Media:       media,
+		Order:       service.NewOrderService(repository.NewOrderRepository(pool), repository.NewTicketTypeRepository(pool), events, orgs, cfg.TicketQRSecret),
 		Storage:     store,
 		Idempotency: repository.NewIdempotencyRepository(pool),
 		Metrics:     metrics.NewRegistry(),

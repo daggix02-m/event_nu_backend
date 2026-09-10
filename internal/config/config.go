@@ -19,6 +19,11 @@ type Config struct {
 	JWTExpiry          time.Duration
 	RefreshTokenExpiry time.Duration
 
+	// TicketQRSecret signs ticket check-in QR payloads (HMAC-SHA256). A
+	// dedicated secret is best; it falls back to JWTSecret when unset so the
+	// gate/dev environments work without extra configuration.
+	TicketQRSecret string
+
 	CORSAllowedOrigins []string
 
 	// Authentication rate limits. In-memory fixed-window limiters — the API is
@@ -101,6 +106,7 @@ func Load() (Config, error) {
 	if cfg.JWTSecret == "" {
 		return Config{}, fmt.Errorf("missing required JWT_SECRET")
 	}
+	cfg.TicketQRSecret = getEnv("TICKET_QR_SECRET", cfg.JWTSecret)
 
 	if cfg.JWTExpiry, err = parseDuration(getEnv("JWT_EXPIRY", "15m")); err != nil {
 		return Config{}, fmt.Errorf("JWT_EXPIRY: %w", err)

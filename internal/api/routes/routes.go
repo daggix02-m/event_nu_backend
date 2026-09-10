@@ -36,6 +36,7 @@ func New(app *api.Application) http.Handler {
 	ven := handlers.NewVenueHandlers(app, app.Venue)
 	adminHandlers := handlers.NewAdminHandlers(app, app.Admin)
 	mediaHandle := handlers.NewMediaHandlers(app, app.Media)
+	orders := handlers.NewOrderHandlers(app, app.Order)
 
 	// Public/auth-critical routes run under the trusted 'service' role so RLS
 	// allows login/registration (identity does not exist yet at that point).
@@ -151,6 +152,18 @@ func New(app *api.Application) http.Handler {
 	// Media reads are public (ready assets only, via RLS); deletes are owner-only.
 	mux.Handle("GET /api/v1/media/{id}", optional(mediaHandle.GetMedia))
 	mux.Handle("DELETE /api/v1/media/{id}", protected(mediaHandle.DeleteMedia))
+	// Tickets & orders (Phase 14): tier management (organizer), public tier
+	// listing, atomic order reservation, order/ticket wallet, QR check-in.
+	mux.Handle("POST /api/v1/events/{id}/ticket-types", protectedIdem(orders.CreateTicketType))
+	mux.Handle("GET /api/v1/events/{id}/ticket-types", public(orders.ListTicketTypesPublic))
+	mux.Handle("GET /api/v1/events/{id}/ticket-types/manage", protected(orders.ListTicketTypes))
+	mux.Handle("PATCH /api/v1/events/{id}/ticket-types/{ticketTypeID}", protected(orders.UpdateTicketType))
+	mux.Handle("POST /api/v1/events/{id}/orders", protectedIdem(orders.CreateOrder))
+	mux.Handle("GET /api/v1/orders/{id}", protected(orders.GetOrder))
+	mux.Handle("GET /api/v1/me/orders", protected(orders.MyOrders))
+	mux.Handle("POST /api/v1/orders/{id}/cancel", protected(orders.CancelOrder))
+	mux.Handle("GET /api/v1/me/tickets", protected(orders.MyTickets))
+	mux.Handle("POST /api/v1/events/{id}/check-in", protected(orders.CheckIn))
 
 	// Local object provider: serve/persist raw objects for the dev/test blob
 	// URLs handed out as upload_url / cdn_url. Dev-only, no auth, no RLS.
