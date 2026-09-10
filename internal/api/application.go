@@ -6,6 +6,7 @@ import (
 	"github.com/daggix02-m/event_nu/backend/internal/api/metrics"
 	"github.com/daggix02-m/event_nu/backend/internal/api/middleware"
 	"github.com/daggix02-m/event_nu/backend/internal/config"
+	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/storage"
 	"github.com/daggix02-m/event_nu/backend/internal/repository"
 	"github.com/daggix02-m/event_nu/backend/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,6 +39,11 @@ type Application struct {
 	Remind  *service.ReminderService
 	Venue   *service.VenueService
 	Admin   *service.AdminService
+	Media   *service.MediaService
+
+	// Storage backs the media pipeline (local files for dev/tests, S3/R2 for
+	// production). Exposed so handlers/workers can reach it when needed.
+	Storage storage.ObjectStore
 
 	// Idempotency backs the client-retryable write middleware. Repositories
 	// read the request tx from context, so records share the guarded write's
@@ -69,6 +75,21 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 	notifier := repository.NewNotificationRepository(pool)
 	reminders := repository.NewReminderRepository(pool)
 
+	store, err := storage.New(
+		cfg.MediaStorageProvider,
+		cfg.MediaS3Endpoint,
+		cfg.MediaS3Region,
+		cfg.MediaS3Bucket,
+		cfg.MediaS3AccessKey,
+		cfg.MediaS3SecretKey,
+		cfg.MediaPublicBase,
+		cfg.MediaLocalDir,
+	)
+	if err != nil {
+		panic("storage init: " + err.Error())
+	}
+	media := service.NewMediaService(repository.NewMediaRepository(pool), store, cfg)
+
 	app := &Application{
 		Logger:      logger,
 		Config:      cfg,
@@ -90,6 +111,8 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Remind:      service.NewReminderService(reminders, events),
 		Venue:       service.NewVenueService(venues, events, orgs),
 		Admin:       service.NewAdminService(reports, events),
+		Media:       media,
+		Storage:     store,
 		Idempotency: repository.NewIdempotencyRepository(pool),
 		Metrics:     metrics.NewRegistry(),
 	}
@@ -99,6 +122,8 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 	app.Comment.SetNotifier(app.Notify)
 	app.Rsvp.SetNotifier(app.Notify)
 	app.Follow.SetNotifier(app.Notify)
+	// Event media attachment validation (owned, ready, right kind).
+	app.Event.SetMediaStore(media)
 
 	return app
 }

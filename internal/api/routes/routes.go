@@ -8,6 +8,7 @@ import (
 	"github.com/daggix02-m/event_nu/backend/internal/api/handlers"
 	"github.com/daggix02-m/event_nu/backend/internal/api/metrics"
 	"github.com/daggix02-m/event_nu/backend/internal/api/middleware"
+	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/storage"
 )
 
 // New builds the route table and wraps it in the middleware chain.
@@ -34,6 +35,7 @@ func New(app *api.Application) http.Handler {
 	reminders := handlers.NewReminderHandlers(app, app.Remind)
 	ven := handlers.NewVenueHandlers(app, app.Venue)
 	adminHandlers := handlers.NewAdminHandlers(app, app.Admin)
+	mediaHandle := handlers.NewMediaHandlers(app, app.Media)
 
 	// Public/auth-critical routes run under the trusted 'service' role so RLS
 	// allows login/registration (identity does not exist yet at that point).
@@ -142,6 +144,22 @@ func New(app *api.Application) http.Handler {
 	mux.Handle("GET /api/v1/me/reminders", protected(reminders.My))
 	// Venue editing (organizer-owned).
 	mux.Handle("PATCH /api/v1/venues/{id}", protected(ven.Update))
+	// Media uploads: intents create assets + presigned URLs (idempotent so a
+	// retried intent doesn't duplicate assets); complete enqueues the worker job.
+	mux.Handle("POST /api/v1/media/upload-intents", protectedIdem(mediaHandle.CreateUploadIntent))
+	mux.Handle("POST /api/v1/media/{id}/complete", protected(mediaHandle.CompleteUpload))
+	// Media reads are public (ready assets only, via RLS); deletes are owner-only.
+	mux.Handle("GET /api/v1/media/{id}", optional(mediaHandle.GetMedia))
+	mux.Handle("DELETE /api/v1/media/{id}", protected(mediaHandle.DeleteMedia))
+
+	// Local object provider: serve/persist raw objects for the dev/test blob
+	// URLs handed out as upload_url / cdn_url. Dev-only, no auth, no RLS.
+	if app.Config.MediaStorageProvider == "local" {
+		if local, ok := app.Storage.(*storage.Local); ok {
+			mux.HandleFunc("GET /media/objects/{key...}", local.ServeObject)
+			mux.Handle("PUT /media/objects/{key...}", local.StoreObject(app.Config.MediaMaxUploadBytes))
+		}
+	}
 
 	// Admin business actions stay in Go (they trigger side effects + audits).
 	admin := func(h http.HandlerFunc) http.Handler {

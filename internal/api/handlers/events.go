@@ -220,6 +220,17 @@ func (h *EventHandlers) writeEventDetail(w http.ResponseWriter, r *http.Request,
 
 func (h *EventHandlers) enrichedEventDTO(r *http.Request, e *domain.Event) dto.EventDTO {
 	out := toEventDTO(e)
+	if e.PosterMediaID != nil || e.TeaserMediaID != nil {
+		if h.app != nil && h.app.Media != nil {
+			poster, teaser, merr := h.app.Media.ResolveEventMedia(r.Context(), e.PosterMediaID, e.TeaserMediaID)
+			if merr != nil {
+				h.app.Logger.Warn("event media resolution unavailable", "event_id", e.ID, "error", merr.Error())
+			} else {
+				out.PosterURL = poster
+				out.TeaserURL = teaser
+			}
+		}
+	}
 	if h.likes == nil {
 		return out
 	}
@@ -264,16 +275,18 @@ func parseEventRequest(w http.ResponseWriter, r *http.Request) (*domain.Event, e
 		return nil, errBadStartsAt
 	}
 	e := &domain.Event{
-		VenueID:      req.VenueID,
-		CategoryID:   req.CategoryID,
-		Title:        req.Title,
-		Description:  req.Description,
-		StartsAt:     starts,
-		PriceIsFree:  req.PriceIsFree,
-		PriceDisplay: req.PriceDisplay,
-		ActionType:   req.ActionType,
-		ActionTarget: req.ActionTarget,
-		MaxAttendees: req.MaxAttendees,
+		VenueID:       req.VenueID,
+		CategoryID:    req.CategoryID,
+		Title:         req.Title,
+		Description:   req.Description,
+		StartsAt:      starts,
+		PriceIsFree:   req.PriceIsFree,
+		PriceDisplay:  req.PriceDisplay,
+		ActionType:    req.ActionType,
+		ActionTarget:  req.ActionTarget,
+		MaxAttendees:  req.MaxAttendees,
+		PosterMediaID: req.PosterMediaID,
+		TeaserMediaID: req.TeaserMediaID,
 	}
 	if req.EndsAt != nil {
 		ends, err := time.Parse(time.RFC3339, *req.EndsAt)

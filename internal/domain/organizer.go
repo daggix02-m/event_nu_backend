@@ -67,6 +67,8 @@ type Event struct {
 	Status           string
 	ModerationStatus string
 	MaxAttendees     *int
+	PosterMediaID    *string
+	TeaserMediaID    *string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	DeletedAt        *time.Time

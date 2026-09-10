@@ -27,19 +27,22 @@ func (r *EventRepository) q(ctx context.Context) database.Querier {
 }
 
 const eventColumns = `id, organizer_id, venue_id, category_id, title, description, starts_at, ends_at,
-	price_is_free, price_display, action_type, action_target, status, moderation_status, max_attendees, created_at, updated_at, deleted_at`
+	price_is_free, price_display, action_type, action_target, status, moderation_status, max_attendees,
+	poster_media_id, teaser_media_id, created_at, updated_at, deleted_at`
 
 // eventColumnsQualified is eventColumns aliased to `e` for queries that join
 // venues (full-text and proximity search), where bare column names are
 // ambiguous.
 const eventColumnsQualified = `e.id, e.organizer_id, e.venue_id, e.category_id, e.title, e.description, e.starts_at, e.ends_at,
-	e.price_is_free, e.price_display, e.action_type, e.action_target, e.status, e.moderation_status, e.max_attendees, e.created_at, e.updated_at, e.deleted_at`
+	e.price_is_free, e.price_display, e.action_type, e.action_target, e.status, e.moderation_status, e.max_attendees,
+	e.poster_media_id, e.teaser_media_id, e.created_at, e.updated_at, e.deleted_at`
 
 func scanEvent(row pgx.Row) (*domain.Event, error) {
 	var e domain.Event
 	err := row.Scan(&e.ID, &e.OrganizerID, &e.VenueID, &e.CategoryID, &e.Title, &e.Description,
 		&e.StartsAt, &e.EndsAt, &e.PriceIsFree, &e.PriceDisplay, &e.ActionType, &e.ActionTarget,
-		&e.Status, &e.ModerationStatus, &e.MaxAttendees, &e.CreatedAt, &e.UpdatedAt, &e.DeletedAt)
+		&e.Status, &e.ModerationStatus, &e.MaxAttendees, &e.PosterMediaID, &e.TeaserMediaID,
+		&e.CreatedAt, &e.UpdatedAt, &e.DeletedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, shared.ErrNotFound
 	}
@@ -52,11 +55,13 @@ func scanEvent(row pgx.Row) (*domain.Event, error) {
 func (r *EventRepository) Create(ctx context.Context, e *domain.Event) (*domain.Event, error) {
 	return scanEvent(r.q(ctx).QueryRow(ctx, `
 		INSERT INTO events (organizer_id, venue_id, category_id, title, description, starts_at, ends_at,
-			price_is_free, price_display, action_type, action_target, max_attendees)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			price_is_free, price_display, action_type, action_target, max_attendees,
+			poster_media_id, teaser_media_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING `+eventColumns,
 		e.OrganizerID, e.VenueID, e.CategoryID, e.Title, e.Description, e.StartsAt, e.EndsAt,
-		e.PriceIsFree, e.PriceDisplay, e.ActionType, e.ActionTarget, e.MaxAttendees))
+		e.PriceIsFree, e.PriceDisplay, e.ActionType, e.ActionTarget, e.MaxAttendees,
+		e.PosterMediaID, e.TeaserMediaID))
 }
 
 // GetByID returns any event by id (owner/privileged visibility via RLS).
@@ -213,11 +218,13 @@ func (r *EventRepository) Update(ctx context.Context, e *domain.Event) (*domain.
 		UPDATE events SET
 			venue_id = $2, category_id = $3, title = $4, description = $5, starts_at = $6, ends_at = $7,
 			price_is_free = $8, price_display = $9, action_type = $10, action_target = $11, max_attendees = $12,
+			poster_media_id = $13, teaser_media_id = $14,
 			updated_at = now()
 		WHERE id = $1
 		RETURNING `+eventColumns,
 		e.ID, e.VenueID, e.CategoryID, e.Title, e.Description, e.StartsAt, e.EndsAt,
-		e.PriceIsFree, e.PriceDisplay, e.ActionType, e.ActionTarget, e.MaxAttendees))
+		e.PriceIsFree, e.PriceDisplay, e.ActionType, e.ActionTarget, e.MaxAttendees,
+		e.PosterMediaID, e.TeaserMediaID))
 }
 
 func (r *EventRepository) UpdateStatus(ctx context.Context, id, status string) error {

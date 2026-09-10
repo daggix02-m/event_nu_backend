@@ -50,6 +50,23 @@ type Config struct {
 	EmailBatchSize      int
 	EmailMaxAttempts    int
 	EmailRetryBaseDelay time.Duration
+
+	// Media pipeline. MediaStorageProvider is "local" (filesystem, dev/tests)
+	// or "s3" (S3-compatible API — MinIO locally, Cloudflare R2 in production).
+	MediaStorageProvider   string
+	MediaS3Endpoint        string
+	MediaS3Region          string
+	MediaS3Bucket          string
+	MediaS3AccessKey       string
+	MediaS3SecretKey       string
+	MediaPublicBase        string
+	MediaLocalDir          string
+	MediaUploadExpiry      time.Duration
+	MediaMaxUploadBytes    int64
+	MediaJobPollInterval   time.Duration
+	MediaJobBatchSize      int
+	MediaJobMaxAttempts    int
+	MediaJobRetryBaseDelay time.Duration
 }
 
 // parseDuration supports Go durations ("15m", "1h") plus day suffixes ("30d").
@@ -162,6 +179,63 @@ func Load() (Config, error) {
 	}
 	if cfg.EmailProvider == "brevo" && cfg.BrevoTemplateVerify <= 0 {
 		return Config{}, fmt.Errorf("EMAIL_PROVIDER=brevo requires BREVO_TEMPLATE_VERIFY > 0")
+	}
+
+	cfg.MediaStorageProvider = getEnv("MEDIA_STORAGE_PROVIDER", "local")
+	cfg.MediaS3Endpoint = getEnv("MEDIA_S3_ENDPOINT", "http://localhost:9000")
+	cfg.MediaS3Region = getEnv("MEDIA_S3_REGION", "auto")
+	cfg.MediaS3Bucket = getEnv("MEDIA_S3_BUCKET", "event-nu")
+	cfg.MediaS3AccessKey = getEnv("MEDIA_S3_ACCESS_KEY", "")
+	cfg.MediaS3SecretKey = getEnv("MEDIA_S3_SECRET_KEY", "")
+	cfg.MediaPublicBase = getEnv("MEDIA_PUBLIC_BASE", cfg.APIPublicBase)
+	cfg.MediaLocalDir = getEnv("MEDIA_LOCAL_DIR", "./media-store")
+	if cfg.MediaUploadExpiry, err = parseDuration(getEnv("MEDIA_UPLOAD_EXPIRY", "15m")); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_UPLOAD_EXPIRY: %w", err)
+	}
+	if cfg.MediaMaxUploadBytes, err = strconv.ParseInt(getEnv("MEDIA_MAX_UPLOAD_BYTES", "10485760"), 10, 64); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_MAX_UPLOAD_BYTES must be an integer: %w", err)
+	}
+	if cfg.MediaJobPollInterval, err = parseDuration(getEnv("MEDIA_JOB_POLL_INTERVAL", "2s")); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_JOB_POLL_INTERVAL: %w", err)
+	}
+	if cfg.MediaJobBatchSize, err = strconv.Atoi(getEnv("MEDIA_JOB_BATCH_SIZE", "10")); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_JOB_BATCH_SIZE must be an integer: %w", err)
+	}
+	if cfg.MediaJobMaxAttempts, err = strconv.Atoi(getEnv("MEDIA_JOB_MAX_ATTEMPTS", "3")); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_JOB_MAX_ATTEMPTS must be an integer: %w", err)
+	}
+	if cfg.MediaJobRetryBaseDelay, err = parseDuration(getEnv("MEDIA_JOB_RETRY_BASE_DELAY", "30s")); err != nil {
+		return Config{}, fmt.Errorf("MEDIA_JOB_RETRY_BASE_DELAY: %w", err)
+	}
+
+	if cfg.MediaStorageProvider != "local" && cfg.MediaStorageProvider != "s3" {
+		return Config{}, fmt.Errorf("MEDIA_STORAGE_PROVIDER must be \"local\" or \"s3\"")
+	}
+	if cfg.MediaStorageProvider == "s3" {
+		if cfg.MediaS3Endpoint == "" {
+			return Config{}, fmt.Errorf("MEDIA_STORAGE_PROVIDER=s3 requires MEDIA_S3_ENDPOINT")
+		}
+		if cfg.MediaS3Bucket == "" {
+			return Config{}, fmt.Errorf("MEDIA_STORAGE_PROVIDER=s3 requires MEDIA_S3_BUCKET")
+		}
+		if cfg.MediaS3AccessKey == "" || cfg.MediaS3SecretKey == "" {
+			return Config{}, fmt.Errorf("MEDIA_STORAGE_PROVIDER=s3 requires MEDIA_S3_ACCESS_KEY and MEDIA_S3_SECRET_KEY")
+		}
+	}
+	if cfg.MediaMaxUploadBytes <= 0 {
+		return Config{}, fmt.Errorf("MEDIA_MAX_UPLOAD_BYTES must be > 0")
+	}
+	if cfg.MediaUploadExpiry <= 0 {
+		return Config{}, fmt.Errorf("MEDIA_UPLOAD_EXPIRY must be > 0")
+	}
+	if cfg.MediaJobBatchSize <= 0 {
+		return Config{}, fmt.Errorf("MEDIA_JOB_BATCH_SIZE must be > 0")
+	}
+	if cfg.MediaJobMaxAttempts <= 0 {
+		return Config{}, fmt.Errorf("MEDIA_JOB_MAX_ATTEMPTS must be > 0")
+	}
+	if cfg.MediaJobRetryBaseDelay <= 0 {
+		return Config{}, fmt.Errorf("MEDIA_JOB_RETRY_BASE_DELAY must be > 0")
 	}
 
 	for _, rl := range []struct {

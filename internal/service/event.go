@@ -37,15 +37,29 @@ type categoryStore interface {
 	List(ctx context.Context) ([]*domain.Category, error)
 }
 
+// mediaCheckStore lets EventService verify organizer-attached media on event
+// updates (owned, correct kind, fully processed).
+type mediaCheckStore interface {
+	GetAssetByID(ctx context.Context, id string) (*domain.MediaAsset, error)
+}
+
 type EventService struct {
 	events eventStore
 	venues venueStore
 	cats   categoryStore
 	orgs   organizerStore
+	media  mediaCheckStore
 }
 
 func NewEventService(events eventStore, venues venueStore, cats categoryStore, orgs organizerStore) *EventService {
 	return &EventService{events: events, venues: venues, cats: cats, orgs: orgs}
+}
+
+// SetMediaStore wires the service that validates organizer-attached media.
+// Nil-safe (no media attachment validation when not wired), mirroring the
+// SetNotifier pattern.
+func (s *EventService) SetMediaStore(media mediaCheckStore) {
+	s.media = media
 }
 
 // RequireOrganizer resolves the caller's active organizer, or a 403.
@@ -139,8 +153,43 @@ func (s *EventService) UpdateEvent(ctx context.Context, userID, eventID string, 
 	if err := validateEvent(e); err != nil {
 		return nil, err
 	}
+	if e.PosterMediaID != nil {
+		if err := s.requireMedia(ctx, userID, *e.PosterMediaID, domain.MediaKindEventPoster); err != nil {
+			return nil, err
+		}
+	}
+	if e.TeaserMediaID != nil {
+		if err := s.requireMedia(ctx, userID, *e.TeaserMediaID, domain.MediaKindEventTeaser); err != nil {
+			return nil, err
+		}
+	}
 	e.ID = existing.ID
 	return s.events.Update(ctx, e)
+}
+
+// requireMedia validates that a media asset is owned by the caller, of the
+// required kind and fully processed (nil-safe: no-op without a wired store).
+func (s *EventService) requireMedia(ctx context.Context, userID, mediaID, kind string) error {
+	if s.media == nil {
+		return shared.NewAppError("media_unavailable", "Media attachments are not available.", http.StatusUnprocessableEntity)
+	}
+	asset, err := s.media.GetAssetByID(ctx, mediaID)
+	if err != nil {
+		if err == shared.ErrNotFound {
+			return shared.NewAppError("invalid_media", "The referenced media asset does not exist.", http.StatusUnprocessableEntity)
+		}
+		return err
+	}
+	if asset.UploaderID != userID {
+		return shared.NewAppError("invalid_media", "You can only attach your own media.", http.StatusUnprocessableEntity)
+	}
+	if asset.Kind != kind {
+		return shared.NewAppError("invalid_media", "The media asset is not the right kind for this field.", http.StatusUnprocessableEntity)
+	}
+	if asset.Status != domain.MediaStatusReady {
+		return shared.NewAppError("invalid_media", "The media asset has not finished processing.", http.StatusUnprocessableEntity)
+	}
+	return nil
 }
 
 // Publish transitions a draft event to published. Requires a venue (the spec:

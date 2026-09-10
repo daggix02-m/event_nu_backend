@@ -3,17 +3,19 @@ package dto
 import "time"
 
 type CreateEventRequest struct {
-	VenueID      *string `json:"venue_id"`
-	CategoryID   *string `json:"category_id"`
-	Title        string  `json:"title"`
-	Description  string  `json:"description"`
-	StartsAt     string  `json:"starts_at"` // RFC3339
-	EndsAt       *string `json:"ends_at"`   // RFC3339, optional
-	PriceIsFree  bool    `json:"price_is_free"`
-	PriceDisplay string  `json:"price_display"`
-	ActionType   string  `json:"action_type"`
-	ActionTarget string  `json:"action_target"`
-	MaxAttendees *int    `json:"max_attendees"`
+	VenueID       *string `json:"venue_id"`
+	CategoryID    *string `json:"category_id"`
+	Title         string  `json:"title"`
+	Description   string  `json:"description"`
+	StartsAt      string  `json:"starts_at"` // RFC3339
+	EndsAt        *string `json:"ends_at"`   // RFC3339, optional
+	PriceIsFree   bool    `json:"price_is_free"`
+	PriceDisplay  string  `json:"price_display"`
+	ActionType    string  `json:"action_type"`
+	ActionTarget  string  `json:"action_target"`
+	MaxAttendees  *int    `json:"max_attendees"`
+	PosterMediaID *string `json:"poster_media_id"`
+	TeaserMediaID *string `json:"teaser_media_id"`
 }
 
 type EventDTO struct {
@@ -35,5 +37,7 @@ type EventDTO struct {
 	LikedByMe        bool       `json:"liked_by_me"`
 	SavedByMe        bool       `json:"saved_by_me"`
 	SavedFolderID    *string    `json:"saved_folder_id"`
+	PosterURL        string     `json:"poster_url"`
+	TeaserURL        string     `json:"teaser_url"`
 	CreatedAt        time.Time  `json:"created_at"`
 }

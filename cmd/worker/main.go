@@ -10,13 +10,16 @@ import (
 	"github.com/daggix02-m/event_nu/backend/internal/config"
 	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
 	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/email"
+	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/storage"
 	"github.com/daggix02-m/event_nu/backend/internal/repository"
 	"github.com/daggix02-m/event_nu/backend/internal/worker"
 	"github.com/joho/godotenv"
+	"golang.org/x/sync/errgroup"
 )
 
-// The worker runs background consumers (email outbox now; media and jobs
-// later). It shares config and the database with the API.
+// The worker runs background consumers (email outbox, media processing). It
+// shares config and the database with the API, connecting as the 'service'
+// role so RLS grants read/write on every table.
 func main() {
 	_ = godotenv.Load()
 
@@ -47,10 +50,30 @@ func main() {
 	}
 
 	outbox := repository.NewOutboxRepository(pool)
-	consumer := worker.NewEmailConsumer(logger, cfg, outbox, sender)
+	emailConsumer := worker.NewEmailConsumer(logger, cfg, outbox, sender)
 
-	logger.Info("worker starting", "email_provider", cfg.EmailProvider)
-	if err := consumer.Run(ctx); err != nil {
+	store, err := storage.New(
+		cfg.MediaStorageProvider,
+		cfg.MediaS3Endpoint,
+		cfg.MediaS3Region,
+		cfg.MediaS3Bucket,
+		cfg.MediaS3AccessKey,
+		cfg.MediaS3SecretKey,
+		cfg.MediaPublicBase,
+		cfg.MediaLocalDir,
+	)
+	if err != nil {
+		logger.Error("storage init failed", "error", err.Error())
+		os.Exit(1)
+	}
+	mediaConsumer := worker.NewMediaConsumer(logger, cfg, repository.NewMediaRepository(pool), store)
+
+	logger.Info("worker starting", "email_provider", cfg.EmailProvider, "storage_provider", cfg.MediaStorageProvider)
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return emailConsumer.Run(gctx) })
+	g.Go(func() error { return mediaConsumer.Run(gctx) })
+	if err := g.Wait(); err != nil {
 		logger.Error("consumer error", "error", err.Error())
 		os.Exit(1)
 	}

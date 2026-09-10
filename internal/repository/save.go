@@ -132,10 +132,12 @@ func (r *SaveRepository) UnsaveEvent(ctx context.Context, userID, eventID string
 // State reports whether the user saved the event and into which folder.
 func (r *SaveRepository) State(ctx context.Context, userID, eventID string) (bool, *string, error) {
 	var folderID *string
+	// NULLIF guards anonymous reads (userID == "") so the ::uuid cast sees NULL
+	// instead of erroring, mirroring LikeRepository.State.
 	err := r.q(ctx).QueryRow(ctx, `
 		SELECT folder_id
 		FROM saves
-		WHERE user_id = $1 AND event_id = $2`, userID, eventID).Scan(&folderID)
+		WHERE user_id = NULLIF($1, '')::uuid AND event_id = $2`, userID, eventID).Scan(&folderID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil, nil
 	}
