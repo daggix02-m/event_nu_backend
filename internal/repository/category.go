@@ -21,7 +21,7 @@ func (r *CategoryRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-const categoryColumns = "id, slug, name, sort_order, is_active"
+const categoryColumns = "id, slug, name, sort_order, is_active, updated_at"
 
 func (r *CategoryRepository) List(ctx context.Context) ([]*domain.Category, error) {
 	rows, err := r.q(ctx).Query(ctx, `
@@ -37,7 +37,7 @@ func (r *CategoryRepository) List(ctx context.Context) ([]*domain.Category, erro
 	var cats []*domain.Category
 	for rows.Next() {
 		var c domain.Category
-		if err := rows.Scan(&c.ID, &c.Slug, &c.Name, &c.SortOrder, &c.IsActive); err != nil {
+		if err := rows.Scan(&c.ID, &c.Slug, &c.Name, &c.SortOrder, &c.IsActive, &c.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan category: %w", err)
 		}
 		cats = append(cats, &c)

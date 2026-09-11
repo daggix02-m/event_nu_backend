@@ -112,7 +112,7 @@ func (r *OrganizerRepository) RejectApplication(ctx context.Context, id, adminUs
 
 func scanOrganizer(row pgx.Row) (*domain.Organizer, error) {
 	var o domain.Organizer
-	err := row.Scan(&o.ID, &o.OwnerUserID, &o.Slug, &o.Name, &o.Bio, &o.Status, &o.CreatedAt, &o.DeletedAt)
+	err := row.Scan(&o.ID, &o.OwnerUserID, &o.Slug, &o.Name, &o.Bio, &o.Status, &o.CreatedAt, &o.UpdatedAt, &o.DeletedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, shared.ErrNotFound
 	}
@@ -122,7 +122,7 @@ func scanOrganizer(row pgx.Row) (*domain.Organizer, error) {
 	return &o, nil
 }
 
-const organizerColumns = "id, owner_user_id, slug, name, bio, status, created_at, deleted_at"
+const organizerColumns = "id, owner_user_id, slug, name, bio, status, created_at, updated_at, deleted_at"
 
 func (r *OrganizerRepository) CreateOrganizer(ctx context.Context, o *domain.Organizer) (*domain.Organizer, error) {
 	return scanOrganizer(r.q(ctx).QueryRow(ctx, `

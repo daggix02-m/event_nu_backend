@@ -43,6 +43,7 @@ type Application struct {
 	Media   *service.MediaService
 	Order   *service.OrderService
 	Payment *service.PaymentService
+	Sync    *service.SyncService
 
 	// Storage backs the media pipeline (local files for dev/tests, S3/R2 for
 	// production). Exposed so handlers/workers can reach it when needed.
@@ -119,6 +120,7 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Storage:     store,
 		Idempotency: repository.NewIdempotencyRepository(pool),
 		Metrics:     metrics.NewRegistry(),
+		Sync:        service.NewSyncService(repository.NewSyncRepository(pool)),
 	}
 
 	// Payment gateway (Phase 15): provider checkouts on order creation and the

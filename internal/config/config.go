@@ -33,6 +33,10 @@ type Config struct {
 	ChapaWebhookSecret string
 	ChapaRedirectBase  string
 
+	// SyncMaxLimit caps the per-domain page size of GET /api/v1/sync (Phase
+	// 16) and is the default when the client omits ?limit=.
+	SyncMaxLimit int
+
 	CORSAllowedOrigins []string
 
 	// Authentication rate limits. In-memory fixed-window limiters — the API is
@@ -272,6 +276,13 @@ func Load() (Config, error) {
 		if cfg.ChapaWebhookSecret == "" {
 			return Config{}, fmt.Errorf("PAYMENT_PROVIDER=chapa requires CHAPA_WEBHOOK_SECRET")
 		}
+	}
+
+	if cfg.SyncMaxLimit, err = strconv.Atoi(getEnv("SYNC_MAX_LIMIT", "500")); err != nil {
+		return Config{}, fmt.Errorf("SYNC_MAX_LIMIT must be an integer: %w", err)
+	}
+	if cfg.SyncMaxLimit <= 0 || cfg.SyncMaxLimit > 1000 {
+		return Config{}, fmt.Errorf("SYNC_MAX_LIMIT must be between 1 and 1000")
 	}
 
 	for _, rl := range []struct {

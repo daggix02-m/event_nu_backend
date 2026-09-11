@@ -24,12 +24,12 @@ func (r *VenueRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-const venueColumns = "id, organizer_id, name, address, latitude, longitude, place_id, city, country_code, status, created_at, deleted_at"
+const venueColumns = "id, organizer_id, name, address, latitude, longitude, place_id, city, country_code, status, created_at, updated_at, deleted_at"
 
 func scanVenue(row pgx.Row) (*domain.Venue, error) {
 	var v domain.Venue
 	err := row.Scan(&v.ID, &v.OrganizerID, &v.Name, &v.Address, &v.Latitude, &v.Longitude,
-		&v.PlaceID, &v.City, &v.CountryCode, &v.Status, &v.CreatedAt, &v.DeletedAt)
+		&v.PlaceID, &v.City, &v.CountryCode, &v.Status, &v.CreatedAt, &v.UpdatedAt, &v.DeletedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, shared.ErrNotFound
 	}

@@ -25,6 +25,7 @@ type Organizer struct {
 	Bio         string
 	Status      string
 	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	DeletedAt   *time.Time
 }
 
@@ -40,6 +41,7 @@ type Venue struct {
 	CountryCode string
 	Status      string
 	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	DeletedAt   *time.Time
 }
 
@@ -49,6 +51,7 @@ type Category struct {
 	Name      string
 	SortOrder int
 	IsActive  bool
+	UpdatedAt time.Time
 }
 
 type Event struct {
