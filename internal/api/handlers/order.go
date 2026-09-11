@@ -12,7 +12,8 @@ import (
 )
 
 // CreateOrder (POST /events/{id}/orders, idempotent) atomically reserves
-// inventory and returns the pending order.
+// inventory, creates the pending order, and — when a payment provider is
+// configured — starts a checkout and returns where to redirect the buyer.
 func (h *OrderHandlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	eventID, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -40,7 +41,25 @@ func (h *OrderHandlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		h.app.AppError(w, r, err)
 		return
 	}
-	shared.WriteJSON(w, http.StatusCreated, toOrderDTO(order))
+
+	out := toOrderDTO(order)
+	if h.pay != nil {
+		init, err := h.pay.Initiate(r.Context(), order)
+		if err != nil {
+			// A failed checkout rolls back the whole request transaction — the
+			// pending order and its reservations vanish with it.
+			h.app.AppError(w, r, err)
+			return
+		}
+		if init != nil {
+			out.Payment = &dto.PaymentInitDTO{
+				Provider:    init.Provider,
+				ProviderRef: init.ProviderRef,
+				RedirectURL: init.RedirectURL,
+			}
+		}
+	}
+	shared.WriteJSON(w, http.StatusCreated, out)
 }
 
 // GetOrder (GET /orders/{id}) — the buyer or the event's organizer.
@@ -99,17 +118,19 @@ func (h *OrderHandlers) CancelOrder(w http.ResponseWriter, r *http.Request) {
 
 func toOrderDTO(o *domain.Order) dto.OrderDTO {
 	out := dto.OrderDTO{
-		ID:            o.ID,
-		EventID:       o.EventID,
-		Status:        o.Status,
-		Currency:      o.Currency,
-		SubtotalMinor: o.SubtotalMinor,
-		TotalMinor:    o.TotalMinor,
-		CreatedAt:     o.CreatedAt,
-		UpdatedAt:     o.UpdatedAt,
-		PaidAt:        o.PaidAt,
-		CancelledAt:   o.CancelledAt,
-		Items:         make([]dto.OrderItemDTO, 0, len(o.Items)),
+		ID:              o.ID,
+		EventID:         o.EventID,
+		Status:          o.Status,
+		Currency:        o.Currency,
+		SubtotalMinor:   o.SubtotalMinor,
+		TotalMinor:      o.TotalMinor,
+		CreatedAt:       o.CreatedAt,
+		UpdatedAt:       o.UpdatedAt,
+		PaidAt:          o.PaidAt,
+		CancelledAt:     o.CancelledAt,
+		PaymentProvider: o.PaymentProvider,
+		ProviderRef:     o.ProviderRef,
+		Items:           make([]dto.OrderItemDTO, 0, len(o.Items)),
 	}
 	for _, it := range o.Items {
 		out.Items = append(out.Items, dto.OrderItemDTO{

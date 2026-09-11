@@ -36,7 +36,8 @@ func New(app *api.Application) http.Handler {
 	ven := handlers.NewVenueHandlers(app, app.Venue)
 	adminHandlers := handlers.NewAdminHandlers(app, app.Admin)
 	mediaHandle := handlers.NewMediaHandlers(app, app.Media)
-	orders := handlers.NewOrderHandlers(app, app.Order)
+	orders := handlers.NewOrderHandlers(app, app.Order, app.Payment)
+	payments := handlers.NewPaymentHandlers(app, app.Payment)
 
 	// Public/auth-critical routes run under the trusted 'service' role so RLS
 	// allows login/registration (identity does not exist yet at that point).
@@ -164,6 +165,10 @@ func New(app *api.Application) http.Handler {
 	mux.Handle("POST /api/v1/orders/{id}/cancel", protected(orders.CancelOrder))
 	mux.Handle("GET /api/v1/me/tickets", protected(orders.MyTickets))
 	mux.Handle("POST /api/v1/events/{id}/check-in", protected(orders.CheckIn))
+	// Payment callback (Phase 15): provider POSTs outcomes here. Runs under the
+	// trusted 'service' role inside the request transaction so the order state
+	// change commits atomically.
+	mux.Handle("POST /webhooks/payments/chapa", service(payments.ChapaWebhook))
 
 	// Local object provider: serve/persist raw objects for the dev/test blob
 	// URLs handed out as upload_url / cdn_url. Dev-only, no auth, no RLS.

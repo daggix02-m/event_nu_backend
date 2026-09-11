@@ -24,6 +24,15 @@ type Config struct {
 	// gate/dev environments work without extra configuration.
 	TicketQRSecret string
 
+	// Payment gateway (Phase 15). PaymentProvider is "noop" (no gateway, local
+	// dev/tests) or "chapa". ChapaWebhookSecret verifies webhook signatures and
+	// defaults to ChapaSecretKey.
+	PaymentProvider    string
+	ChapaSecretKey     string
+	ChapaAPIBase       string
+	ChapaWebhookSecret string
+	ChapaRedirectBase  string
+
 	CORSAllowedOrigins []string
 
 	// Authentication rate limits. In-memory fixed-window limiters — the API is
@@ -242,6 +251,27 @@ func Load() (Config, error) {
 	}
 	if cfg.MediaJobRetryBaseDelay <= 0 {
 		return Config{}, fmt.Errorf("MEDIA_JOB_RETRY_BASE_DELAY must be > 0")
+	}
+
+	cfg.PaymentProvider = getEnv("PAYMENT_PROVIDER", "noop")
+	cfg.ChapaSecretKey = getEnv("CHAPA_SECRET_KEY", "")
+	cfg.ChapaAPIBase = getEnv("CHAPA_API_BASE", "https://api.chapa.co/v1")
+	cfg.ChapaWebhookSecret = getEnv("CHAPA_WEBHOOK_SECRET", cfg.ChapaSecretKey)
+	cfg.ChapaRedirectBase = getEnv("CHAPA_REDIRECT_BASE", cfg.APIPublicBase)
+
+	if cfg.PaymentProvider != "noop" && cfg.PaymentProvider != "chapa" {
+		return Config{}, fmt.Errorf("PAYMENT_PROVIDER must be \"noop\" or \"chapa\"")
+	}
+	if cfg.PaymentProvider == "chapa" {
+		if cfg.ChapaSecretKey == "" {
+			return Config{}, fmt.Errorf("PAYMENT_PROVIDER=chapa requires CHAPA_SECRET_KEY")
+		}
+		if cfg.ChapaAPIBase == "" {
+			return Config{}, fmt.Errorf("PAYMENT_PROVIDER=chapa requires CHAPA_API_BASE")
+		}
+		if cfg.ChapaWebhookSecret == "" {
+			return Config{}, fmt.Errorf("PAYMENT_PROVIDER=chapa requires CHAPA_WEBHOOK_SECRET")
+		}
 	}
 
 	for _, rl := range []struct {

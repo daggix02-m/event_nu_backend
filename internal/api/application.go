@@ -6,6 +6,7 @@ import (
 	"github.com/daggix02-m/event_nu/backend/internal/api/metrics"
 	"github.com/daggix02-m/event_nu/backend/internal/api/middleware"
 	"github.com/daggix02-m/event_nu/backend/internal/config"
+	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/payments"
 	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/storage"
 	"github.com/daggix02-m/event_nu/backend/internal/repository"
 	"github.com/daggix02-m/event_nu/backend/internal/service"
@@ -41,6 +42,7 @@ type Application struct {
 	Admin   *service.AdminService
 	Media   *service.MediaService
 	Order   *service.OrderService
+	Payment *service.PaymentService
 
 	// Storage backs the media pipeline (local files for dev/tests, S3/R2 for
 	// production). Exposed so handlers/workers can reach it when needed.
@@ -118,6 +120,17 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Idempotency: repository.NewIdempotencyRepository(pool),
 		Metrics:     metrics.NewRegistry(),
 	}
+
+	// Payment gateway (Phase 15): provider checkouts on order creation and the
+	// privileged webhook endpoint that drives order/ticket finalization.
+	app.Payment = service.NewPaymentService(
+		repository.NewOrderRepository(pool),
+		repository.NewPaymentRepository(pool),
+		users,
+		payments.New(cfg.PaymentProvider, cfg.ChapaAPIBase, cfg.ChapaSecretKey),
+		app.Notify,
+		cfg,
+	)
 
 	// Notification fan-out hooks: every create that should notify someone runs
 	// through these nil-safe notifiers (they are no-ops when not wired).

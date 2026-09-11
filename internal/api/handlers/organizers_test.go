@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -172,8 +173,9 @@ func TestOrganizerVenueEventSlice(t *testing.T) {
 
 	// --- Organizer creates a draft event ---
 	start := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
-	body := fmt.Sprintf(`{"title":"Warehouse Rave","description":"Bring a friend",`+
-		`"starts_at":%q,"venue_id":%q,"price_is_free":true,"max_attendees":50}`, start, venueID)
+	eventTitle := fmt.Sprintf("Warehouse Rave %d", time.Now().UnixNano())
+	body := fmt.Sprintf(`{"title":%q,"description":"Bring a friend",`+
+		`"starts_at":%q,"venue_id":%q,"price_is_free":true,"max_attendees":50}`, eventTitle, start, venueID)
 	rec = doJSON(t, h, http.MethodPost, "/api/v1/events", body, orgTok)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create event: expected 201, got %d: %s", rec.Code, rec.Body.String())
@@ -195,10 +197,10 @@ func TestOrganizerVenueEventSlice(t *testing.T) {
 		t.Fatalf("publish: expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	// Published event is publicly visible now. Request a large page so the
-	// event is guaranteed on page 1 even when the shared dev DB holds many
-	// published events that sort before it.
-	rec = doJSON(t, h, http.MethodGet, "/api/v1/events?limit=100", "", "")
+	// Published event is publicly visible now. Search by its unique title so the
+	// assertion never depends on how many unrelated events the shared test DB has
+	// accumulated across prior runs (a global page-1 scan would miss it).
+	rec = doJSON(t, h, http.MethodGet, "/api/v1/events?q="+url.QueryEscape(eventTitle)+"&limit=100", "", "")
 	if rec.Code != http.StatusOK || !containsEventID(t, rec, eventID) {
 		t.Fatalf("published event must be visible: %d", rec.Code)
 	}

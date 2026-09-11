@@ -110,6 +110,11 @@ above the `backend/` git root. See `.env.example` for the template.
 | `DATABASE_ADMIN_URL` | Migration/owner connection |
 | `JWT_SECRET` | HMAC secret; `JWT_EXPIRY` (default `15m`), `REFRESH_TOKEN_EXPIRY` (default `30d`) |
 | `TICKET_QR_SECRET` | HMAC key for ticket QR payloads (defaults to `JWT_SECRET`); see `docs/ticket-qr-protocol.md` |
+| `PAYMENT_PROVIDER` | `noop` (default) or `chapa`; see `docs/chapa.md` |
+| `CHAPA_SECRET_KEY` | Chapa API key (initialize/verify auth); required when `PAYMENT_PROVIDER=chapa` |
+| `CHAPA_API_BASE` | Chapa API root (default `https://api.chapa.co/v1`) |
+| `CHAPA_WEBHOOK_SECRET` | Webhook HMAC key (defaults to `CHAPA_SECRET_KEY`) |
+| `CHAPA_REDIRECT_BASE` | Checkout `return_url` base (defaults to `API_PUBLIC_BASE`) |
 | `EMAIL_PROVIDER` | `brevo` or `noop` (default `noop`) |
 | `BREVO_API_KEY` | v3 API key (`xkeysib-...`) |
 | `BREVO_API_BASE` | Defaults to `https://api.brevo.com` |

@@ -25,6 +25,20 @@ type OrderDTO struct {
 	UpdatedAt     time.Time      `json:"updated_at"`
 	PaidAt        *time.Time     `json:"paid_at"`
 	CancelledAt   *time.Time     `json:"cancelled_at"`
+	// PaymentProvider/ProviderRef surface the finalized provider state once a
+	// webhook has assigned it (orders columns). Payment is populated by the
+	// order-create response with the checkout the buyer should be sent to.
+	PaymentProvider *string         `json:"payment_provider,omitempty"`
+	ProviderRef     *string         `json:"provider_ref,omitempty"`
+	Payment         *PaymentInitDTO `json:"payment,omitempty"`
+}
+
+// PaymentInitDTO is the card-init result included in the order-create response
+// when a payment provider is configured: where to send the buyer to pay.
+type PaymentInitDTO struct {
+	Provider    string `json:"provider"`
+	ProviderRef string `json:"provider_ref"`
+	RedirectURL string `json:"redirect_url"`
 }
 
 type OrderItemDTO struct {

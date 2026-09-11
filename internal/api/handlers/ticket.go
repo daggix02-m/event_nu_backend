@@ -16,10 +16,11 @@ import (
 type OrderHandlers struct {
 	app   *api.Application
 	order *service.OrderService
+	pay   *service.PaymentService
 }
 
-func NewOrderHandlers(app *api.Application, order *service.OrderService) *OrderHandlers {
-	return &OrderHandlers{app: app, order: order}
+func NewOrderHandlers(app *api.Application, order *service.OrderService, pay *service.PaymentService) *OrderHandlers {
+	return &OrderHandlers{app: app, order: order, pay: pay}
 }
 
 // ---- ticket types ------------------------------------------------------------

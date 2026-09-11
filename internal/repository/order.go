@@ -376,6 +376,56 @@ func (r *OrderRepository) ConfirmPaid(ctx context.Context, orderID, provider, pr
 	return order, tickets, nil
 }
 
+// FailPayment flips a pending order to failed and releases every reserved tier
+// back to inventory (a failed payment holds no stock). Runs in a privileged
+// ('service') RLS context via the payment webhook. Idempotent: an order that is
+// already failed/cancelled is a no-op; a paid order (the webhook lost a race or
+// is duplicated) returns ErrOrderAlreadyPaid and its inventory is NOT released.
+func (r *OrderRepository) FailPayment(ctx context.Context, orderID, provider, providerRef string) error {
+	tx, owned, err := database.Tx(ctx, r.pool)
+	if err != nil {
+		return err
+	}
+	if owned {
+		defer tx.Rollback(ctx)
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE orders SET status = 'failed',
+			payment_provider = $2, provider_ref = $3, updated_at = now()
+		WHERE id = $1 AND status = 'pending'`, orderID, provider, providerRef)
+	if err != nil {
+		return fmt.Errorf("fail payment: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		var status string
+		if serr := tx.QueryRow(ctx, `SELECT status::text FROM orders WHERE id = $1`, orderID).Scan(&status); serr != nil {
+			return shared.ErrNotFound
+		}
+		if status == "paid" {
+			return ErrOrderAlreadyPaid
+		}
+		return nil // already failed/cancelled — nothing to release
+	}
+
+	items, err := r.selectOrderItems(ctx, tx, orderID)
+	if err != nil {
+		return err
+	}
+	for _, it := range items {
+		if _, err := tx.Exec(ctx, `SELECT release_ticket_inventory($1, $2)`, it.TicketTypeID, it.Quantity); err != nil {
+			return fmt.Errorf("release inventory: %w", err)
+		}
+	}
+
+	if owned {
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit fail payment: %w", err)
+		}
+	}
+	return nil
+}
+
 // ListTicketsByUser returns the caller's active (issued) tickets.
 func (r *OrderRepository) ListTicketsByUser(ctx context.Context, userID string) ([]*domain.Ticket, error) {
 	rows, err := r.q(ctx).Query(ctx, `
