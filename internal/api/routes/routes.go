@@ -39,6 +39,7 @@ func New(app *api.Application) http.Handler {
 	orders := handlers.NewOrderHandlers(app, app.Order, app.Payment)
 	payments := handlers.NewPaymentHandlers(app, app.Payment)
 	syncHandlers := handlers.NewSyncHandlers(app, app.Sync)
+	deviceHandlers := handlers.NewDeviceHandlers(app, app.Device)
 
 	// Public/auth-critical routes run under the trusted 'service' role so RLS
 	// allows login/registration (identity does not exist yet at that point).
@@ -174,6 +175,11 @@ func New(app *api.Application) http.Handler {
 	// cursor. Per-user rows stay out of sync — the client re-fetches them via
 	// their own endpoints (private full refresh).
 	mux.Handle("GET /api/v1/sync", protected(syncHandlers.Pull))
+	// Push device registry (Phase 17): register/deregister the caller's FCM
+	// tokens. Registration is idempotent (token upsert), so it's retry-safe.
+	mux.Handle("POST /api/v1/devices", protectedIdem(deviceHandlers.Register))
+	mux.Handle("GET /api/v1/me/devices", protected(deviceHandlers.List))
+	mux.Handle("DELETE /api/v1/devices/{id}", protected(deviceHandlers.Deregister))
 
 	// Local object provider: serve/persist raw objects for the dev/test blob
 	// URLs handed out as upload_url / cdn_url. Dev-only, no auth, no RLS.

@@ -109,3 +109,61 @@ func (r *ReminderRepository) CountByUser(ctx context.Context, userID string) (in
 	}
 	return total, nil
 }
+
+// ClaimDue atomically claims a batch of scheduled reminders whose remind_at has
+// arrived, leasing them so a crash mid-dispatch re-queues them after the lease
+// expires. Runs as the privileged service role.
+func (r *ReminderRepository) ClaimDue(ctx context.Context, batchSize int, lease time.Duration) ([]*domain.Reminder, error) {
+	rows, err := r.q(ctx).Query(ctx, `
+		UPDATE event_reminders
+		SET dispatch_lease_at = now() + $2
+		WHERE id IN (
+			SELECT id FROM event_reminders
+			WHERE status = 'scheduled'
+			  AND remind_at <= now()
+			  AND (dispatch_lease_at IS NULL OR dispatch_lease_at <= now())
+			ORDER BY remind_at, id
+			LIMIT $1
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING `+reminderColumns, batchSize, lease.String())
+	if err != nil {
+		return nil, fmt.Errorf("claim due reminders: %w", err)
+	}
+	defer rows.Close()
+
+	var out []*domain.Reminder
+	for rows.Next() {
+		rem, err := scanReminder(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rem)
+	}
+	return out, rows.Err()
+}
+
+// MarkReminderSent records dispatch and links the notification that was
+// created for the user's inbox; clears the lease.
+func (r *ReminderRepository) MarkReminderSent(ctx context.Context, id, notificationID string) error {
+	_, err := r.q(ctx).Exec(ctx, `
+		UPDATE event_reminders
+		SET status = 'sent', sent_at = now(), notification_id = $2, dispatch_lease_at = NULL
+		WHERE id = $1`, id, notificationID)
+	if err != nil {
+		return fmt.Errorf("mark reminder sent: %w", err)
+	}
+	return nil
+}
+
+// MarkReminderFailed records a dispatch failure; clears the lease.
+func (r *ReminderRepository) MarkReminderFailed(ctx context.Context, id string) error {
+	_, err := r.q(ctx).Exec(ctx, `
+		UPDATE event_reminders
+		SET status = 'failed', dispatch_lease_at = NULL
+		WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("mark reminder failed: %w", err)
+	}
+	return nil
+}

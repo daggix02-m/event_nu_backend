@@ -11,11 +11,17 @@ import (
 // notifierStore is the notification-repository surface NotificationService
 // depends on.
 type notifierStore interface {
-	Notify(ctx context.Context, userID, ntype, title, body string, data map[string]any) error
+	Notify(ctx context.Context, userID, ntype, title, body string, data map[string]any) (string, error)
 	ListByUser(ctx context.Context, userID string, limit, offset int) ([]*domain.Notification, error)
 	CountByUser(ctx context.Context, userID string) (int, error)
 	MarkRead(ctx context.Context, userID, id string) error
 	MarkAllRead(ctx context.Context, userID string) (int64, error)
+}
+
+// rsvpFanOutStore lists the users who RSVP'd to an event so the event-update
+// hook can fan out notifications. Privileged (service role) read.
+type rsvpFanOutStore interface {
+	ListUserIDsByEvent(ctx context.Context, eventID string, limit int) ([]string, error)
 }
 
 // Notifier lets domain services emit notifications without knowing the
@@ -28,16 +34,25 @@ type Notifier interface {
 	// NotifyUser notifies an arbitrary user (e.g. the organizer owner on a new
 	// follow).
 	NotifyUser(ctx context.Context, userID, ntype, title, body string) error
+	// NotifyEventRSVPs fans a notification out to every user who RSVP'd to the
+	// event (event updates). Best-effort and capped.
+	NotifyEventRSVPs(ctx context.Context, eventID, ntype, title, body string) error
 }
 
 type NotificationService struct {
 	notifications notifierStore
 	events        eventStore
 	orgs          organizerStore
+	rsvps         rsvpFanOutStore
 }
 
 func NewNotificationService(notifications notifierStore, events eventStore, orgs organizerStore) *NotificationService {
 	return &NotificationService{notifications: notifications, events: events, orgs: orgs}
+}
+
+// SetRsvpStore wires the RSVP fan-out query used by NotifyEventRSVPs.
+func (s *NotificationService) SetRsvpStore(rsvps rsvpFanOutStore) {
+	s.rsvps = rsvps
 }
 
 // NotifyEventOrganizer resolves the event's organizer owner and delivers a
@@ -53,14 +68,33 @@ func (s *NotificationService) NotifyEventOrganizer(ctx context.Context, eventID,
 	if err != nil || org.OwnerUserID == nil {
 		return nil
 	}
-	return s.notifications.Notify(ctx, *org.OwnerUserID, ntype, title, body, nil)
+	_, _ = s.notifications.Notify(ctx, *org.OwnerUserID, ntype, title, body, nil)
+	return nil
 }
 
 func (s *NotificationService) NotifyUser(ctx context.Context, userID, ntype, title, body string) error {
 	if userID == "" {
 		return nil
 	}
-	return s.notifications.Notify(ctx, userID, ntype, title, body, nil)
+	_, _ = s.notifications.Notify(ctx, userID, ntype, title, body, nil)
+	return nil
+}
+
+// NotifyEventRSVPs fans a notification out to everyone who RSVP'd to an event
+// (used on event updates). Failed lookups are silently skipped — the update
+// already committed; fan-out is best-effort.
+func (s *NotificationService) NotifyEventRSVPs(ctx context.Context, eventID, ntype, title, body string) error {
+	if s.rsvps == nil {
+		return nil
+	}
+	ids, err := s.rsvps.ListUserIDsByEvent(ctx, eventID, 200)
+	if err != nil {
+		return nil
+	}
+	for _, id := range ids {
+		_, _ = s.notifications.Notify(ctx, id, ntype, title, body, map[string]any{"event_id": eventID})
+	}
+	return nil
 }
 
 // List returns the caller's notification inbox, newest first.

@@ -10,6 +10,7 @@ import (
 	"github.com/daggix02-m/event_nu/backend/internal/config"
 	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
 	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/email"
+	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/push"
 	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/storage"
 	"github.com/daggix02-m/event_nu/backend/internal/repository"
 	"github.com/daggix02-m/event_nu/backend/internal/worker"
@@ -68,11 +69,33 @@ func main() {
 	}
 	mediaConsumer := worker.NewMediaConsumer(logger, cfg, repository.NewMediaRepository(pool), store)
 
-	logger.Info("worker starting", "email_provider", cfg.EmailProvider, "storage_provider", cfg.MediaStorageProvider)
+	var pusher push.Provider
+	pusher, err = push.New(cfg.PushProvider, push.FCMConfig{
+		ProjectID:      cfg.FCMProjectID,
+		ServiceAccount: cfg.FCMServiceAccount,
+		APIBase:        cfg.FCMAPIBase,
+		TokenURL:       cfg.FCMTokenURL,
+	})
+	if err != nil {
+		logger.Error("push provider init failed", "error", err.Error())
+		os.Exit(1)
+	}
+	pushConsumer := worker.NewPushConsumer(
+		logger,
+		cfg,
+		repository.NewNotificationRepository(pool),
+		repository.NewReminderRepository(pool),
+		repository.NewDeviceRepository(pool),
+		repository.NewEventRepository(pool),
+		pusher,
+	)
+
+	logger.Info("worker starting", "email_provider", cfg.EmailProvider, "storage_provider", cfg.MediaStorageProvider, "push_provider", cfg.PushProvider)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return emailConsumer.Run(gctx) })
 	g.Go(func() error { return mediaConsumer.Run(gctx) })
+	g.Go(func() error { return pushConsumer.Run(gctx) })
 	if err := g.Wait(); err != nil {
 		logger.Error("consumer error", "error", err.Error())
 		os.Exit(1)

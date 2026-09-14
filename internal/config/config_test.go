@@ -282,3 +282,71 @@ func mustDuration(t *testing.T, s string) time.Duration {
 	}
 	return d
 }
+
+func TestLoadPushProviderDefaultsToNoop(t *testing.T) {
+	setEnv(t, map[string]string{
+		"DATABASE_URL": "postgres://localhost/db",
+		"JWT_SECRET":   "secret",
+	})
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.PushProvider != "noop" {
+		t.Fatalf("expected default PUSH_PROVIDER noop, got %q", cfg.PushProvider)
+	}
+	if cfg.FCMAPIBase != "https://fcm.googleapis.com/v1" {
+		t.Fatalf("unexpected FCM_API_BASE default: %q", cfg.FCMAPIBase)
+	}
+}
+
+func TestLoadFcmRequiresServiceAccount(t *testing.T) {
+	setEnv(t, map[string]string{
+		"DATABASE_URL":        "postgres://localhost/db",
+		"JWT_SECRET":          "secret",
+		"PUSH_PROVIDER":       "fcm",
+		"FCM_SERVICE_ACCOUNT": "",
+	})
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "FCM_SERVICE_ACCOUNT") {
+		t.Fatalf("expected FCM_SERVICE_ACCOUNT error, got %v", err)
+	}
+}
+
+func TestLoadRejectsUnknownPushProvider(t *testing.T) {
+	setEnv(t, map[string]string{
+		"DATABASE_URL":  "postgres://localhost/db",
+		"JWT_SECRET":    "secret",
+		"PUSH_PROVIDER": "apns",
+	})
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "PUSH_PROVIDER") {
+		t.Fatalf("expected PUSH_PROVIDER error, got %v", err)
+	}
+}
+
+func TestLoadPushTuningValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{name: "non-integer batch", env: map[string]string{"PUSH_BATCH_SIZE": "abc"}, want: "PUSH_BATCH_SIZE must be an integer"},
+		{name: "invalid poll interval", env: map[string]string{"PUSH_POLL_INTERVAL": "soon"}, want: "PUSH_POLL_INTERVAL"},
+		{name: "invalid retry delay", env: map[string]string{"PUSH_RETRY_BASE_DELAY": "soon"}, want: "PUSH_RETRY_BASE_DELAY"},
+		{name: "non-integer max attempts", env: map[string]string{"PUSH_MAX_ATTEMPTS": "abc"}, want: "PUSH_MAX_ATTEMPTS must be an integer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := map[string]string{"DATABASE_URL": "postgres://localhost/db", "JWT_SECRET": "secret"}
+			for k, v := range tt.env {
+				env[k] = v
+			}
+			setEnv(t, env)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected error containing %q, got %v", tt.want, err)
+			}
+		})
+	}
+}

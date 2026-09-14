@@ -115,6 +115,12 @@ above the `backend/` git root. See `.env.example` for the template.
 | `CHAPA_API_BASE` | Chapa API root (default `https://api.chapa.co/v1`) |
 | `CHAPA_WEBHOOK_SECRET` | Webhook HMAC key (defaults to `CHAPA_SECRET_KEY`) |
 | `CHAPA_REDIRECT_BASE` | Checkout `return_url` base (defaults to `API_PUBLIC_BASE`) |
+| `SYNC_MAX_LIMIT` | Max changes per domain per sync poll (default `500`, 1..1000); see `docs/sync-protocol.md` |
+| `PUSH_PROVIDER` | `noop` (default) or `fcm`; see `docs/push.md` |
+| `FCM_SERVICE_ACCOUNT` | Firebase service-account JSON; required when `PUSH_PROVIDER=fcm` |
+| `FCM_PROJECT_ID` | Firebase project id for the FCM v1 endpoint |
+| `FCM_API_BASE`, `FCM_TOKEN_URL` | FCM v1 send + OAuth2 token endpoints (defaults) |
+| `PUSH_POLL_INTERVAL`, `PUSH_BATCH_SIZE`, `PUSH_MAX_ATTEMPTS`, `PUSH_RETRY_BASE_DELAY` | Push-consumer tuning |
 | `EMAIL_PROVIDER` | `brevo` or `noop` (default `noop`) |
 | `BREVO_API_KEY` | v3 API key (`xkeysib-...`) |
 | `BREVO_API_BASE` | Defaults to `https://api.brevo.com` |

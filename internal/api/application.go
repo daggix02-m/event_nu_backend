@@ -44,6 +44,7 @@ type Application struct {
 	Order   *service.OrderService
 	Payment *service.PaymentService
 	Sync    *service.SyncService
+	Device  *service.DeviceService
 
 	// Storage backs the media pipeline (local files for dev/tests, S3/R2 for
 	// production). Exposed so handlers/workers can reach it when needed.
@@ -78,6 +79,7 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 	reports := repository.NewReportRepository(pool)
 	notifier := repository.NewNotificationRepository(pool)
 	reminders := repository.NewReminderRepository(pool)
+	deviceRepo := repository.NewDeviceRepository(pool)
 
 	store, err := storage.New(
 		cfg.MediaStorageProvider,
@@ -121,6 +123,7 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Idempotency: repository.NewIdempotencyRepository(pool),
 		Metrics:     metrics.NewRegistry(),
 		Sync:        service.NewSyncService(repository.NewSyncRepository(pool)),
+		Device:      service.NewDeviceService(deviceRepo),
 	}
 
 	// Payment gateway (Phase 15): provider checkouts on order creation and the
@@ -139,6 +142,10 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 	app.Comment.SetNotifier(app.Notify)
 	app.Rsvp.SetNotifier(app.Notify)
 	app.Follow.SetNotifier(app.Notify)
+	// RSVP fan-out (event-update notifications to attendees). No trigger today:
+	// only draft events are editable, and public events cannot change after
+	// going live. Wired so the capability is ready when live-event edits land.
+	app.Notify.SetRsvpStore(rsvps)
 	// Event media attachment validation (owned, ready, right kind).
 	app.Event.SetMediaStore(media)
 

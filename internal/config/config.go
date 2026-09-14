@@ -37,6 +37,21 @@ type Config struct {
 	// 16) and is the default when the client omits ?limit=.
 	SyncMaxLimit int
 
+	// Push notifications (Phase 17). PushProvider is "noop" (dev/tests) or
+	// "fcm"; FCMServiceAccount is the Firebase service-account JSON blob used
+	// to mint OAuth2 bearer tokens for the FCM v1 API.
+	PushProvider      string
+	FCMServiceAccount string
+	FCMProjectID      string
+	FCMAPIBase        string
+	FCMTokenURL       string
+
+	// Worker / push-consumer tuning.
+	PushPollInterval   time.Duration
+	PushBatchSize      int
+	PushMaxAttempts    int
+	PushRetryBaseDelay time.Duration
+
 	CORSAllowedOrigins []string
 
 	// Authentication rate limits. In-memory fixed-window limiters — the API is
@@ -283,6 +298,32 @@ func Load() (Config, error) {
 	}
 	if cfg.SyncMaxLimit <= 0 || cfg.SyncMaxLimit > 1000 {
 		return Config{}, fmt.Errorf("SYNC_MAX_LIMIT must be between 1 and 1000")
+	}
+
+	cfg.PushProvider = getEnv("PUSH_PROVIDER", "noop")
+	cfg.FCMServiceAccount = getEnv("FCM_SERVICE_ACCOUNT", "")
+	cfg.FCMProjectID = getEnv("FCM_PROJECT_ID", "")
+	cfg.FCMAPIBase = getEnv("FCM_API_BASE", "https://fcm.googleapis.com/v1")
+	cfg.FCMTokenURL = getEnv("FCM_TOKEN_URL", "https://oauth2.googleapis.com/token")
+
+	if cfg.PushPollInterval, err = parseDuration(getEnv("PUSH_POLL_INTERVAL", "2s")); err != nil {
+		return Config{}, fmt.Errorf("PUSH_POLL_INTERVAL: %w", err)
+	}
+	if cfg.PushBatchSize, err = strconv.Atoi(getEnv("PUSH_BATCH_SIZE", "50")); err != nil {
+		return Config{}, fmt.Errorf("PUSH_BATCH_SIZE must be an integer: %w", err)
+	}
+	if cfg.PushMaxAttempts, err = strconv.Atoi(getEnv("PUSH_MAX_ATTEMPTS", "5")); err != nil {
+		return Config{}, fmt.Errorf("PUSH_MAX_ATTEMPTS must be an integer: %w", err)
+	}
+	if cfg.PushRetryBaseDelay, err = parseDuration(getEnv("PUSH_RETRY_BASE_DELAY", "30s")); err != nil {
+		return Config{}, fmt.Errorf("PUSH_RETRY_BASE_DELAY: %w", err)
+	}
+
+	if cfg.PushProvider != "noop" && cfg.PushProvider != "fcm" {
+		return Config{}, fmt.Errorf("PUSH_PROVIDER must be \"noop\" or \"fcm\"")
+	}
+	if cfg.PushProvider == "fcm" && cfg.FCMServiceAccount == "" {
+		return Config{}, fmt.Errorf("PUSH_PROVIDER=fcm requires FCM_SERVICE_ACCOUNT")
 	}
 
 	for _, rl := range []struct {

@@ -2,8 +2,10 @@ package domain
 
 import "time"
 
-// Notification is an inbox record. Dispatch (push/email) is handled in Phase
-// 17; here notifications are created by hooks and read by the recipient.
+// Notification is an inbox record. Dispatch (push) is handled by the Phase 17
+// worker; here notifications are created by hooks and read by the recipient.
+// The dispatch_* fields are worker bookkeeping and are zeroed in the inbox
+// reads.
 type Notification struct {
 	ID        string
 	UserID    string
@@ -13,6 +15,9 @@ type Notification struct {
 	Data      map[string]any
 	ReadAt    *time.Time
 	CreatedAt time.Time
+
+	DispatchAttempts int
+	NextDispatchAt   *time.Time
 }
 
 // Reminder is a request to be notified ahead of an event. Records only — the

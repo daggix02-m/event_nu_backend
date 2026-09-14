@@ -126,6 +126,31 @@ func (r *RsvpRepository) CountByUser(ctx context.Context, userID string) (int, e
 	return n, nil
 }
 
+// ListUserIDsByEvent returns (up to limit) user ids with an active RSVP to the
+// event, for fan-out notifications. The count applied guards against one event
+// blowing up fan-out; it runs under the service role so every RSVP is visible.
+func (r *RsvpRepository) ListUserIDsByEvent(ctx context.Context, eventID string, limit int) ([]string, error) {
+	rows, err := r.q(ctx).Query(ctx, `
+		SELECT user_id FROM event_rsvps
+		WHERE event_id = $1 AND status IN ('confirmed', 'attended')
+		ORDER BY created_at, id
+		LIMIT $2`, eventID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list rsvp user ids: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan rsvp user id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // CountAttended returns the number of active RSVPs for an event for a given
 // user (attendee-list eligibility). Own-row RLS exposes only the caller's rows.
 func (r *RsvpRepository) CountAttended(ctx context.Context, userID, eventID string) (int, error) {
