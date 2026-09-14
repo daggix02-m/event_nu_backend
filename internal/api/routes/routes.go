@@ -40,6 +40,7 @@ func New(app *api.Application) http.Handler {
 	payments := handlers.NewPaymentHandlers(app, app.Payment)
 	syncHandlers := handlers.NewSyncHandlers(app, app.Sync)
 	deviceHandlers := handlers.NewDeviceHandlers(app, app.Device)
+	momentHandlers := handlers.NewMomentHandlers(app, app.Moment)
 
 	// Public/auth-critical routes run under the trusted 'service' role so RLS
 	// allows login/registration (identity does not exist yet at that point).
@@ -180,6 +181,12 @@ func New(app *api.Application) http.Handler {
 	mux.Handle("POST /api/v1/devices", protectedIdem(deviceHandlers.Register))
 	mux.Handle("GET /api/v1/me/devices", protected(deviceHandlers.List))
 	mux.Handle("DELETE /api/v1/devices/{id}", protected(deviceHandlers.Deregister))
+	// Moments (Phase 18): community gallery on published events (public read,
+	// RSVP/ticket holders share), and the opt-in attendee directory.
+	mux.Handle("POST /api/v1/events/{id}/moments", protectedIdem(momentHandlers.Create))
+	mux.Handle("GET /api/v1/events/{id}/moments", public(momentHandlers.List))
+	mux.Handle("DELETE /api/v1/moments/{id}", protected(momentHandlers.Delete))
+	mux.Handle("GET /api/v1/events/{id}/attendees", public(momentHandlers.ListAttendees))
 
 	// Local object provider: serve/persist raw objects for the dev/test blob
 	// URLs handed out as upload_url / cdn_url. Dev-only, no auth, no RLS.

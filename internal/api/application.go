@@ -45,6 +45,7 @@ type Application struct {
 	Payment *service.PaymentService
 	Sync    *service.SyncService
 	Device  *service.DeviceService
+	Moment  *service.MomentService
 
 	// Storage backs the media pipeline (local files for dev/tests, S3/R2 for
 	// production). Exposed so handlers/workers can reach it when needed.
@@ -124,6 +125,7 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Metrics:     metrics.NewRegistry(),
 		Sync:        service.NewSyncService(repository.NewSyncRepository(pool)),
 		Device:      service.NewDeviceService(deviceRepo),
+		Moment:      service.NewMomentService(repository.NewMomentRepository(pool), events),
 	}
 
 	// Payment gateway (Phase 15): provider checkouts on order creation and the
