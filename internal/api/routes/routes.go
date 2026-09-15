@@ -43,6 +43,8 @@ func New(app *api.Application) http.Handler {
 	momentHandlers := handlers.NewMomentHandlers(app, app.Moment)
 	schedule := handlers.NewScheduleHandlers(app, app.Schedule)
 	questions := handlers.NewQuestionHandlers(app, app.Question)
+	badges := handlers.NewBadgeHandlers(app, app.Badge)
+	recaps := handlers.NewRecapHandlers(app, app.Recap)
 
 	// Public/auth-critical routes run under the trusted 'service' role so RLS
 	// allows login/registration (identity does not exist yet at that point).
@@ -201,6 +203,10 @@ func New(app *api.Application) http.Handler {
 	mux.Handle("DELETE /api/v1/questions/{id}/upvote", protected(questions.RemoveUpvote))
 	mux.Handle("POST /api/v1/questions/{id}/pin", protected(questions.Pin))
 	mux.Handle("POST /api/v1/questions/{id}/answer", protected(questions.Answer))
+	// Badges (Phase 20): the caller's earned milestone badges.
+	mux.Handle("GET /api/v1/users/me/badges", protected(badges.MyBadges))
+	// Recap (Phase 20): the cached-or-regenerated event dashboard (public read).
+	mux.Handle("GET /api/v1/events/{id}/recap", public(recaps.Get))
 
 	// Local object provider: serve/persist raw objects for the dev/test blob
 	// URLs handed out as upload_url / cdn_url. Dev-only, no auth, no RLS.

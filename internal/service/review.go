@@ -26,10 +26,16 @@ type ReviewService struct {
 	reviews reviewStore
 	rsvps   rsvpStore
 	events  eventStore
+	badges  BadgeAwarder
 }
 
 func NewReviewService(reviews reviewStore, rsvps rsvpStore, events eventStore) *ReviewService {
 	return &ReviewService{reviews: reviews, rsvps: rsvps, events: events}
+}
+
+// SetBadges optionally attaches the milestone-award hook (nil-safe).
+func (s *ReviewService) SetBadges(b BadgeAwarder) {
+	s.badges = b
 }
 
 // Create requires that the caller actually attended: they must hold an active
@@ -53,7 +59,14 @@ func (s *ReviewService) Create(ctx context.Context, userID, eventID string, rati
 	if rsvpd == 0 {
 		return nil, shared.NewAppError("review_not_allowed", "You can only review events you RSVP'd to.", http.StatusForbidden)
 	}
-	return s.reviews.Create(ctx, &domain.Review{EventID: eventID, UserID: userID, Rating: rating, Body: body})
+	created, err := s.reviews.Create(ctx, &domain.Review{EventID: eventID, UserID: userID, Rating: rating, Body: body})
+	if err != nil {
+		return nil, err
+	}
+	if s.badges != nil {
+		_ = s.badges.Award(ctx, userID, domain.BadgeFirstAttended, map[string]any{"event_id": eventID})
+	}
+	return created, nil
 }
 
 func (s *ReviewService) Update(ctx context.Context, userID, reviewID string, rating int16, body string) (*domain.Review, error) {

@@ -22,6 +22,7 @@ type RsvpService struct {
 	rsvps    rsvpStore
 	events   eventStore
 	notifier Notifier
+	badges   BadgeAwarder
 }
 
 func NewRsvpService(rsvps rsvpStore, events eventStore) *RsvpService {
@@ -31,6 +32,11 @@ func NewRsvpService(rsvps rsvpStore, events eventStore) *RsvpService {
 // SetNotifier optionally attaches the notification hook (nil-safe).
 func (s *RsvpService) SetNotifier(n Notifier) {
 	s.notifier = n
+}
+
+// SetBadges optionally attaches the milestone-award hook (nil-safe).
+func (s *RsvpService) SetBadges(b BadgeAwarder) {
+	s.badges = b
 }
 
 // Create reserves a seat for the caller on a publicly visible event. Capacity
@@ -48,6 +54,9 @@ func (s *RsvpService) Create(ctx context.Context, userID, eventID string, public
 	case "ok":
 		if s.notifier != nil {
 			_ = s.notifier.NotifyEventOrganizer(ctx, eventID, "rsvp", "New RSVP", "")
+		}
+		if s.badges != nil {
+			_ = s.badges.Award(ctx, rsvp.UserID, domain.BadgeFirstRSVP, map[string]any{"event_id": eventID})
 		}
 		return rsvp, nil
 	case "duplicate":

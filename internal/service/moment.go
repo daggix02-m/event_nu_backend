@@ -25,10 +25,16 @@ type momentStore interface {
 type MomentService struct {
 	moments momentStore
 	events  eventStore
+	badges  BadgeAwarder
 }
 
 func NewMomentService(moments momentStore, events eventStore) *MomentService {
 	return &MomentService{moments: moments, events: events}
+}
+
+// SetBadges optionally attaches the milestone-award hook (nil-safe).
+func (s *MomentService) SetBadges(b BadgeAwarder) {
+	s.badges = b
 }
 
 // Create adds a moment to a published event. The caller must hold an RSVP or
@@ -56,12 +62,19 @@ func (s *MomentService) Create(ctx context.Context, userID, eventID, mediaAssetI
 		return nil, shared.NewAppError("invalid_media", "Media asset not found or not ready.", http.StatusUnprocessableEntity)
 	}
 
-	return s.moments.Create(ctx, &domain.Moment{
+	created, err := s.moments.Create(ctx, &domain.Moment{
 		EventID:      eventID,
 		UserID:       userID,
 		MediaAssetID: mediaAssetID,
 		Caption:      caption,
 	})
+	if err != nil {
+		return nil, err
+	}
+	if s.badges != nil {
+		_ = s.badges.Award(ctx, userID, domain.BadgeFirstMoment, map[string]any{"event_id": eventID})
+	}
+	return created, nil
 }
 
 func (s *MomentService) List(ctx context.Context, eventID string, page, limit int) (PageResult[*domain.Moment], error) {

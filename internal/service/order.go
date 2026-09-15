@@ -41,10 +41,16 @@ type OrderService struct {
 	events   eventStore
 	orgs     organizerStore
 	qrSecret string
+	badges   BadgeAwarder
 }
 
 func NewOrderService(orders orderStore, types ticketTypeStore, events eventStore, orgs organizerStore, qrSecret string) *OrderService {
 	return &OrderService{orders: orders, types: types, events: events, orgs: orgs, qrSecret: qrSecret}
+}
+
+// SetBadges optionally attaches the milestone-award hook (nil-safe).
+func (s *OrderService) SetBadges(b BadgeAwarder) {
+	s.badges = b
 }
 
 // requireEventOrganizer resolves the caller's active organizer and verifies it
@@ -227,6 +233,9 @@ func (s *OrderService) ConfirmPaid(ctx context.Context, orderID, provider, provi
 		}
 		return nil, nil, err
 	}
+	if s.badges != nil {
+		_ = s.badges.Award(ctx, order.UserID, domain.BadgeFirstTicket, map[string]any{"event_id": order.EventID})
+	}
 	return order, tickets, nil
 }
 
@@ -273,7 +282,14 @@ func (s *OrderService) CheckIn(ctx context.Context, userID, eventID string, p *d
 	}
 	switch status {
 	case "ok":
-		return s.orders.GetTicketByID(ctx, p.TicketID)
+		ticket, err := s.orders.GetTicketByID(ctx, p.TicketID)
+		if err != nil {
+			return nil, err
+		}
+		if s.badges != nil {
+			_ = s.badges.Award(ctx, ticket.UserID, domain.BadgeFirstAttended, map[string]any{"event_id": eventID})
+		}
+		return ticket, nil
 	case "already_used":
 		return nil, shared.NewAppError("already_checked_in", "This ticket has already been checked in.", http.StatusConflict)
 	case "forbidden":

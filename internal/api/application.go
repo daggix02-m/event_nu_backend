@@ -48,6 +48,8 @@ type Application struct {
 	Moment   *service.MomentService
 	Schedule *service.ScheduleService
 	Question *service.QuestionService
+	Badge    *service.BadgeService
+	Recap    *service.RecapService
 
 	// Storage backs the media pipeline (local files for dev/tests, S3/R2 for
 	// production). Exposed so handlers/workers can reach it when needed.
@@ -131,6 +133,8 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Moment:      service.NewMomentService(repository.NewMomentRepository(pool), events),
 		Schedule:    service.NewScheduleService(repository.NewEventSessionRepository(pool), events, orgs),
 		Question:    service.NewQuestionService(questionRepo, questionRepo, events, orgs),
+		Badge:       service.NewBadgeService(repository.NewBadgeRepository(pool)),
+		Recap:       service.NewRecapService(repository.NewRecapRepository(pool), events),
 	}
 
 	// Payment gateway (Phase 15): provider checkouts on order creation and the
@@ -149,6 +153,11 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 	app.Comment.SetNotifier(app.Notify)
 	app.Rsvp.SetNotifier(app.Notify)
 	app.Follow.SetNotifier(app.Notify)
+	// Milestone badge hooks: best-effort awards on successful actions.
+	app.Rsvp.SetBadges(app.Badge)
+	app.Review.SetBadges(app.Badge)
+	app.Moment.SetBadges(app.Badge)
+	app.Order.SetBadges(app.Badge)
 	// RSVP fan-out (event-update notifications to attendees). No trigger today:
 	// only draft events are editable, and public events cannot change after
 	// going live. Wired so the capability is ready when live-event edits land.
