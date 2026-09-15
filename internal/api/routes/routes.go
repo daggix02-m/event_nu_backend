@@ -41,6 +41,8 @@ func New(app *api.Application) http.Handler {
 	syncHandlers := handlers.NewSyncHandlers(app, app.Sync)
 	deviceHandlers := handlers.NewDeviceHandlers(app, app.Device)
 	momentHandlers := handlers.NewMomentHandlers(app, app.Moment)
+	schedule := handlers.NewScheduleHandlers(app, app.Schedule)
+	questions := handlers.NewQuestionHandlers(app, app.Question)
 
 	// Public/auth-critical routes run under the trusted 'service' role so RLS
 	// allows login/registration (identity does not exist yet at that point).
@@ -187,6 +189,18 @@ func New(app *api.Application) http.Handler {
 	mux.Handle("GET /api/v1/events/{id}/moments", public(momentHandlers.List))
 	mux.Handle("DELETE /api/v1/moments/{id}", protected(momentHandlers.Delete))
 	mux.Handle("GET /api/v1/events/{id}/attendees", public(momentHandlers.ListAttendees))
+	// Schedule (Phase 19): organizer-managed session slots, public read.
+	mux.Handle("POST /api/v1/events/{id}/schedule", protectedIdem(schedule.Create))
+	mux.Handle("GET /api/v1/events/{id}/schedule", public(schedule.List))
+	mux.Handle("PATCH /api/v1/schedule/{id}", protected(schedule.Update))
+	mux.Handle("DELETE /api/v1/schedule/{id}", protected(schedule.Delete))
+	// Q&A (Phase 19): attendee questions, votes, organizer pin/answer.
+	mux.Handle("POST /api/v1/events/{id}/questions", protected(questions.Create))
+	mux.Handle("GET /api/v1/events/{id}/questions", optional(questions.List))
+	mux.Handle("POST /api/v1/questions/{id}/upvote", protected(questions.Upvote))
+	mux.Handle("DELETE /api/v1/questions/{id}/upvote", protected(questions.RemoveUpvote))
+	mux.Handle("POST /api/v1/questions/{id}/pin", protected(questions.Pin))
+	mux.Handle("POST /api/v1/questions/{id}/answer", protected(questions.Answer))
 
 	// Local object provider: serve/persist raw objects for the dev/test blob
 	// URLs handed out as upload_url / cdn_url. Dev-only, no auth, no RLS.
