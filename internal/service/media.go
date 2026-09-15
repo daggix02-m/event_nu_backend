@@ -26,10 +26,6 @@ type mediaAssetStore interface {
 	ListVariantsForMediaIDs(ctx context.Context, mediaIDs []string, variant, density string) (map[string]string, error)
 }
 
-type mediaStore interface {
-	GetAssetByID(ctx context.Context, id string) (*domain.MediaAsset, error)
-}
-
 // MediaService orchestrates the upload lifecycle: an upload intent creates a
 // pending asset and a presigned PUT URL; the client uploads the bytes, then
 // completes the intent to enqueue the processing job; the worker produces

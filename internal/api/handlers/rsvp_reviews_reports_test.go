@@ -339,10 +339,11 @@ func TestReports(t *testing.T) {
 	orgTok, _ := promoteOrganizer(t, h, "reportorg", fmt.Sprintf("Report Org %d", time.Now().UnixNano()))
 	eventID := createPublishedEvent(t, h, orgTok, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339))
 
-	// A venue + a comment target. The venue name sorts first so the paginated
-	// venues list (ordered by name) shows it on page 1.
+	// A venue + a comment target. The venue name sorts first alphabetically
+	// ("Aaa Aaa" < "Aaa Far") so the paginated venues list (ordered by name,
+	// limit 100) shows it on page 1 even with accumulated test venues.
 	rec := doJSON(t, h, http.MethodPost, "/api/v1/venues",
-		fmt.Sprintf(`{"name":"Aaa Venue %d","latitude":40.71,"longitude":-74.00,"city":"NYC"}`, time.Now().UnixNano()), orgTok)
+		fmt.Sprintf(`{"name":"Aaa Aaa %d","latitude":40.71,"longitude":-74.00,"city":"NYC"}`, time.Now().UnixNano()), orgTok)
 	venueID := idFromCreate(t, rec, "id")
 	_, userA, _ := registerAndToken(t, h, "repa")
 	_, userB, _ := registerAndToken(t, h, "repb")

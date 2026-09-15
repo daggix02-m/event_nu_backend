@@ -26,15 +26,15 @@ func (r *EventRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-const eventColumns = `id, organizer_id, venue_id, category_id, title, description, starts_at, ends_at,
-	price_is_free, price_display, action_type, action_target, status, moderation_status, max_attendees,
+const eventColumns = `id, organizer_id, venue_id, category_id, title, COALESCE(description, '') AS description, starts_at, ends_at,
+	price_is_free, COALESCE(price_display, '') AS price_display, action_type, COALESCE(action_target, '') AS action_target, status, moderation_status, max_attendees,
 	poster_media_id, teaser_media_id, created_at, updated_at, deleted_at`
 
 // eventColumnsQualified is eventColumns aliased to `e` for queries that join
 // venues (full-text and proximity search), where bare column names are
 // ambiguous.
-const eventColumnsQualified = `e.id, e.organizer_id, e.venue_id, e.category_id, e.title, e.description, e.starts_at, e.ends_at,
-	e.price_is_free, e.price_display, e.action_type, e.action_target, e.status, e.moderation_status, e.max_attendees,
+const eventColumnsQualified = `e.id, e.organizer_id, e.venue_id, e.category_id, e.title, COALESCE(e.description, '') AS description, e.starts_at, e.ends_at,
+	e.price_is_free, COALESCE(e.price_display, '') AS price_display, e.action_type, COALESCE(e.action_target, '') AS action_target, e.status, e.moderation_status, e.max_attendees,
 	e.poster_media_id, e.teaser_media_id, e.created_at, e.updated_at, e.deleted_at`
 
 func scanEvent(row pgx.Row) (*domain.Event, error) {

@@ -8,7 +8,7 @@ EMAIL_PROVIDER ?= noop
 
 export DATABASE_ADMIN_URL DATABASE_URL JWT_SECRET EMAIL_PROVIDER
 
-.PHONY: run worker test vet build fmt migrate-up migrate-new db-up db-down tidy ci
+.PHONY: run worker test vet build lint fmt migrate-up migrate-new db-up db-down tidy ci
 
 run:
 	go run ./cmd/api
@@ -25,6 +25,10 @@ test:
 
 vet:
 	go vet ./...
+
+lint:
+	# Requires golangci-lint on PATH; pinned by ci.yml.
+	golangci-lint run ./...
 
 fmt:
 	go fmt ./...
@@ -60,8 +64,9 @@ ci:
 	@out="$$(gofmt -l .)"; test -z "$$out" || (echo "Files needing gofmt:"; echo "$$out"; exit 1)
 	go vet ./...
 	go build ./...
-	# -timeout 20m: the DB-backed handlers suite runs against a shared remote
+	golangci-lint run ./...
+	# -timeout 30m: the DB-backed handlers suite runs against a shared remote
 	# dev DB whose published-event count grows on every run, pushing the page
-	# walk past go test's 10m default; the same suite is fast against the local
-	# CI Postgres.
-	go test -race -p 1 -count=1 -timeout 20m ./...
+	# walk past go test's 20m ceiling; the same suite is fast against the local
+	# CI Postgres (~2m), where the 30m ceiling is never a factor.
+	go test -race -p 1 -count=1 -timeout 30m ./...

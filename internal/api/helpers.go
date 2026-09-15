@@ -7,16 +7,6 @@ import (
 	"github.com/daggix02-m/event_nu/backend/internal/shared"
 )
 
-type responseRecorder struct {
-	http.ResponseWriter
-	status int
-}
-
-func (r *responseRecorder) WriteHeader(status int) {
-	r.status = status
-	r.ResponseWriter.WriteHeader(status)
-}
-
 // ServerError logs the underlying error and returns a generic 500 — internal
 // details never reach the client.
 func (app *Application) ServerError(w http.ResponseWriter, r *http.Request, err error) {

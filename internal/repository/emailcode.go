@@ -47,7 +47,7 @@ func (r *EmailCodeRepository) Consume(ctx context.Context, codeHash, purpose str
 		return "", fmt.Errorf("begin code tx: %w", err)
 	}
 	if isNew {
-		defer tx.Rollback(ctx)
+		defer func() { _ = tx.Rollback(ctx) }()
 	}
 
 	var userID string

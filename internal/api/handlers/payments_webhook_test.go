@@ -290,7 +290,7 @@ func TestPaymentWebhookRejectsTamperedAndUnknown(t *testing.T) {
 	body := `{"tx_ref":"00000000-0000-0000-0000-000000000001","status":"successful"}`
 
 	// Tampered body: signature checks out against a different payload.
-	other := fmt.Sprintf(`{"tx_ref":"00000000-0000-0000-0000-000000000099","status":"successful"}`)
+	other := `{"tx_ref":"00000000-0000-0000-0000-000000000099","status":"successful"}`
 	if rec := doSignedWebhook(t, h, body, signWebhook(other)); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("tampered signature: expected 401, got %d: %s", rec.Code, rec.Body.String())
 	}

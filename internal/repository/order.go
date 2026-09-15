@@ -126,7 +126,7 @@ func (r *OrderRepository) CreateOrder(ctx context.Context, userID, eventID strin
 		return nil, err
 	}
 	if owned {
-		defer tx.Rollback(ctx)
+		defer func() { _ = tx.Rollback(ctx) }()
 	}
 
 	var currency string
@@ -273,7 +273,7 @@ func (r *OrderRepository) Cancel(ctx context.Context, userID, orderID string) er
 		return err
 	}
 	if owned {
-		defer tx.Rollback(ctx)
+		defer func() { _ = tx.Rollback(ctx) }()
 	}
 
 	var status string
@@ -322,7 +322,7 @@ func (r *OrderRepository) ConfirmPaid(ctx context.Context, orderID, provider, pr
 		return nil, nil, err
 	}
 	if owned {
-		defer tx.Rollback(ctx)
+		defer func() { _ = tx.Rollback(ctx) }()
 	}
 
 	order, err := scanOrder(tx.QueryRow(ctx, `
@@ -387,7 +387,7 @@ func (r *OrderRepository) FailPayment(ctx context.Context, orderID, provider, pr
 		return err
 	}
 	if owned {
-		defer tx.Rollback(ctx)
+		defer func() { _ = tx.Rollback(ctx) }()
 	}
 
 	tag, err := tx.Exec(ctx, `

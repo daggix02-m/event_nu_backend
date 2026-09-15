@@ -275,7 +275,9 @@ func TestSearchAdminVenue(t *testing.T) {
 	}
 
 	// --- Category filter --------------------------------------------------
-	rec = doJSON(t, h, http.MethodGet, "/api/v1/events?category="+catID, "", "")
+	// limit=100 keeps the categorized event on page 1 even after repeated
+	// suite runs have accumulated other events under the same seeded category.
+	rec = doJSON(t, h, http.MethodGet, "/api/v1/events?category="+catID+"&limit=100", "", "")
 	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
 		t.Fatalf("decode category filter: %v", err)
 	}

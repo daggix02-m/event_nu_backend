@@ -89,7 +89,7 @@ func (r *OutboxRepository) MarkSent(ctx context.Context, id, messageID string) e
 	if err != nil {
 		return fmt.Errorf("begin sent tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx, `
 		UPDATE email_outbox
@@ -113,7 +113,7 @@ func (r *OutboxRepository) MarkFailed(ctx context.Context, id string, errMsg str
 	if err != nil {
 		return fmt.Errorf("begin failed tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	status := "pending"
 	if attempts >= maxAttempts {
