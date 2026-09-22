@@ -223,7 +223,9 @@ func New(app *api.Application) http.Handler {
 	}
 	mux.Handle("POST /api/v1/admin/organizer-applications/{id}/approve", admin(org.Approve))
 	mux.Handle("POST /api/v1/admin/organizer-applications/{id}/reject", admin(org.Reject))
+	mux.Handle("GET /api/v1/admin/organizer-applications", admin(adminHandlers.ListApplications))
 	mux.Handle("GET /api/v1/admin/reports", admin(adminHandlers.ListReports))
+	mux.Handle("GET /api/v1/admin/events", admin(adminHandlers.ListEvents))
 	mux.Handle("POST /api/v1/admin/reports/{id}/resolve", admin(adminHandlers.ResolveReport))
 	mux.Handle("POST /api/v1/admin/events/{id}/block", admin(adminHandlers.BlockEvent))
 	mux.Handle("POST /api/v1/admin/events/{id}/restore", admin(adminHandlers.RestoreEvent))

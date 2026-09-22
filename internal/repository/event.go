@@ -130,6 +130,62 @@ func (r *EventRepository) SetModeration(ctx context.Context, id, moderation stri
 	return nil
 }
 
+// adminEventClause builds the WHERE clause for the admin event list. Filters
+// are validated at the service boundary, so values here are trusted enums.
+func adminEventClause(status, moderation string) (string, []any) {
+	conds := []string{"deleted_at IS NULL"}
+	args := []any{}
+	if status != "" {
+		args = append(args, status)
+		conds = append(conds, fmt.Sprintf("status = $%d", len(args)))
+	}
+	if moderation != "" {
+		args = append(args, moderation)
+		conds = append(conds, fmt.Sprintf("moderation_status = $%d", len(args)))
+	}
+	return strings.Join(conds, " AND "), args
+}
+
+// AdminList returns every event matching the optional status/moderation
+// filters, newest first. Unlike ListVisible there is no public published /
+// not-blocked restriction — the admin queue sees drafts and blocked events.
+func (r *EventRepository) AdminList(ctx context.Context, status, moderation string, limit, offset int) ([]*domain.Event, error) {
+	where, args := adminEventClause(status, moderation)
+	rows, err := r.q(ctx).Query(ctx, `
+		SELECT `+eventColumns+`
+		FROM events
+		WHERE `+where+`
+		ORDER BY starts_at DESC, id
+		LIMIT $`+numArg(len(args)+1)+` OFFSET $`+numArg(len(args)+2),
+		append(args, limit, offset)...)
+	if err != nil {
+		return nil, fmt.Errorf("admin list events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []*domain.Event
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
+// AdminCount counts events matching the optional admin filters.
+func (r *EventRepository) AdminCount(ctx context.Context, status, moderation string) (int, error) {
+	where, args := adminEventClause(status, moderation)
+	var total int
+	err := r.q(ctx).QueryRow(ctx, `
+		SELECT count(*) FROM events WHERE `+where, args...).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("admin count events: %w", err)
+	}
+	return total, nil
+}
+
 // ListByVenue returns published events at a venue (used by venue detail).
 func (r *EventRepository) ListByVenue(ctx context.Context, venueID string, limit, offset int) ([]*domain.Event, error) {
 	rows, err := r.q(ctx).Query(ctx, `

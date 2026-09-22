@@ -143,3 +143,69 @@ func (r *OrganizerRepository) GetOrganizerByOwner(ctx context.Context, userID st
 		SELECT `+organizerColumns+`
 		FROM organizers WHERE owner_user_id = $1 AND deleted_at IS NULL LIMIT 1`, userID))
 }
+
+const applicationQueueColumns = "oa.id, oa.user_id, oa.requested_name, oa.requested_slug, oa.bio, oa.supporting_data, oa.status, oa.reviewed_by, oa.reviewed_at, COALESCE(oa.review_notes, ''), oa.created_at, oa.updated_at, u.username, u.email"
+
+func scanApplicationQueueItem(row pgx.Row) (*domain.OrganizerApplication, error) {
+	var a domain.OrganizerApplication
+	var data []byte
+	err := row.Scan(&a.ID, &a.UserID, &a.RequestedName, &a.RequestedSlug, &a.Bio, &data,
+		&a.Status, &a.ReviewedBy, &a.ReviewedAt, &a.ReviewNotes, &a.CreatedAt, &a.UpdatedAt,
+		&a.ApplicantUsername, &a.ApplicantEmail)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, shared.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan organizer_application queue item: %w", err)
+	}
+	if err := json.Unmarshal(data, &a.SupportingData); err != nil {
+		return nil, fmt.Errorf("unmarshal supporting_data: %w", err)
+	}
+	return &a, nil
+}
+
+func (r *OrganizerRepository) ListApplications(ctx context.Context, status string, limit, offset int) ([]*domain.OrganizerApplication, error) {
+	where, args := "", []any{}
+	if status != "" {
+		where = "WHERE oa.status = $1"
+		args = append(args, status)
+	}
+	rows, err := r.q(ctx).Query(ctx, `
+		SELECT `+applicationQueueColumns+`
+		FROM organizer_applications oa
+		LEFT JOIN users u ON u.id = oa.user_id
+		`+where+`
+		ORDER BY (oa.status = 'pending') DESC, oa.created_at DESC, oa.id
+		LIMIT $`+numArg(len(args)+1)+` OFFSET $`+numArg(len(args)+2),
+		append(args, limit, offset)...)
+	if err != nil {
+		return nil, fmt.Errorf("list organizer_applications: %w", err)
+	}
+	defer rows.Close()
+
+	var apps []*domain.OrganizerApplication
+	for rows.Next() {
+		app, err := scanApplicationQueueItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		apps = append(apps, app)
+	}
+	return apps, rows.Err()
+}
+
+func (r *OrganizerRepository) CountApplications(ctx context.Context, status string) (int, error) {
+	where, args := "", []any{}
+	if status != "" {
+		where = "WHERE status = $1"
+		args = append(args, status)
+	}
+	var total int
+	err := r.q(ctx).QueryRow(ctx, `
+		SELECT count(*) FROM organizer_applications
+		`+where, args...).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("count organizer_applications: %w", err)
+	}
+	return total, nil
+}

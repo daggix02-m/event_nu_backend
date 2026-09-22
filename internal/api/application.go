@@ -122,7 +122,7 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Notify:      service.NewNotificationService(notifier, events, orgs),
 		Remind:      service.NewReminderService(reminders, events),
 		Venue:       service.NewVenueService(venues, events, orgs),
-		Admin:       service.NewAdminService(reports, events),
+		Admin:       service.NewAdminService(reports, events, orgs, events),
 		Media:       media,
 		Order:       service.NewOrderService(repository.NewOrderRepository(pool), repository.NewTicketTypeRepository(pool), events, orgs, cfg.TicketQRSecret),
 		Storage:     store,

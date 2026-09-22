@@ -15,6 +15,11 @@ type OrganizerApplication struct {
 	ReviewNotes    string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	// ApplicantUsername and ApplicantEmail carry the applicant's identity when
+	// the row is loaded by an admin queue listing (LEFT JOIN users). They are
+	// nil on every non-admin read path.
+	ApplicantUsername *string
+	ApplicantEmail    *string
 }
 
 type Organizer struct {

@@ -100,8 +100,8 @@ func CORS(allowedOrigins map[string]struct{}) func(http.Handler) http.Handler {
 				if _, ok := allowedOrigins[origin]; ok {
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 					w.Header().Set("Vary", "Origin")
-					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key")
+					w.Header().Set("Access-Control-Expose-Headers", "Retry-After")
 				}
 				if r.Method == http.MethodOptions {
 					w.WriteHeader(http.StatusNoContent)

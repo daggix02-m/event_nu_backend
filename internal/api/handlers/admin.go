@@ -64,6 +64,59 @@ func (h *AdminHandlers) ListReports(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *AdminHandlers) ListApplications(w http.ResponseWriter, r *http.Request) {
+	if !h.isAdmin(r.Context()) {
+		h.app.AppError(w, r, shared.NewAppError("forbidden", "Admin access required.", http.StatusForbidden))
+		return
+	}
+	page, limit, ok := parsePagination(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.admin.ListApplications(r.Context(), page, limit, r.URL.Query().Get("status"))
+	if err != nil {
+		h.app.AppError(w, r, err)
+		return
+	}
+	out := make([]dto.AdminOrganizerApplicationDTO, 0, len(result.Items))
+	for _, app := range result.Items {
+		out = append(out, dto.NewAdminOrganizerApplicationDTO(app))
+	}
+	writePaginated(w, http.StatusOK, out, dto.PaginationMeta{
+		Page:    page,
+		Limit:   limit,
+		Total:   result.Total,
+		HasNext: page*limit < result.Total,
+	})
+}
+
+func (h *AdminHandlers) ListEvents(w http.ResponseWriter, r *http.Request) {
+	if !h.isAdmin(r.Context()) {
+		h.app.AppError(w, r, shared.NewAppError("forbidden", "Admin access required.", http.StatusForbidden))
+		return
+	}
+	page, limit, ok := parsePagination(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.admin.ListEvents(r.Context(), page, limit,
+		r.URL.Query().Get("status"), r.URL.Query().Get("moderation_status"))
+	if err != nil {
+		h.app.AppError(w, r, err)
+		return
+	}
+	out := make([]dto.AdminEventDTO, 0, len(result.Items))
+	for _, e := range result.Items {
+		out = append(out, dto.NewAdminEventDTO(e))
+	}
+	writePaginated(w, http.StatusOK, out, dto.PaginationMeta{
+		Page:    page,
+		Limit:   limit,
+		Total:   result.Total,
+		HasNext: page*limit < result.Total,
+	})
+}
+
 func (h *AdminHandlers) ResolveReport(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
