@@ -186,7 +186,11 @@ func TestWorkerRetriesThenSucceeds(t *testing.T) {
 	defer srv.Close()
 
 	cfg := testWorkerConfig()
-	cfg.EmailRetryBaseDelay = time.Millisecond
+	// ClaimBatch only picks rows whose next_retry_at has elapsed, and each
+	// retry is scheduled at baseDelay << (attempt-1). The delay and inter-pass
+	// sleeps keep the schedule ahead of this test's back-to-back passes;
+	// 1ms was racy (flaky on CI: pass N+1 often ran before retry_at came due).
+	cfg.EmailRetryBaseDelay = 50 * time.Millisecond
 	client := email.NewBrevoClient("test-key", srv.URL, "Event Nu", "sender@x.com", "reply@x.com")
 	consumer := testConsumer(t, pool, cfg, client)
 
@@ -200,14 +204,16 @@ func TestWorkerRetriesThenSucceeds(t *testing.T) {
 		t.Fatalf("enqueue: %v", err)
 	}
 
-	// Pass 1: 500 → retry scheduled.
+	// Pass 1: 500 → retry scheduled for +50ms.
 	if err := consumer.processBatch(context.Background()); err != nil {
 		t.Fatalf("pass1: %v", err)
 	}
-	// Pass 2: 503 → retry scheduled.
+	time.Sleep(60 * time.Millisecond)
+	// Pass 2: 503 → retry scheduled for +2×50ms.
 	if err := consumer.processBatch(context.Background()); err != nil {
 		t.Fatalf("pass2: %v", err)
 	}
+	time.Sleep(120 * time.Millisecond)
 	// Pass 3: success.
 	if err := consumer.processBatch(context.Background()); err != nil {
 		t.Fatalf("pass3: %v", err)
