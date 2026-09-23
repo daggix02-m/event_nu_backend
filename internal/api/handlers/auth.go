@@ -140,14 +140,15 @@ func (h *AuthHandlers) writeAuthResponse(w http.ResponseWriter, r *http.Request,
 
 func toUserDTO(u *domain.User) dto.UserDTO {
 	return dto.UserDTO{
-		ID:         u.ID,
-		Email:      u.Email,
-		Username:   u.Username,
-		Bio:        u.Bio,
-		PhotoURL:   u.PhotoURL,
-		Role:       string(u.Role),
-		IsVerified: u.IsVerified,
-		CreatedAt:  u.CreatedAt,
+		ID:                  u.ID,
+		Email:               u.Email,
+		Username:            u.Username,
+		Bio:                 u.Bio,
+		PhotoURL:            u.PhotoURL,
+		Role:                string(u.Role),
+		IsVerified:          u.IsVerified,
+		CreatedAt:           u.CreatedAt,
+		OnboardingCompleted: u.OnboardingCompletedAt != nil,
 	}
 }
 

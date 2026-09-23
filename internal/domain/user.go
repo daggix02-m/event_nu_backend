@@ -35,6 +35,11 @@ type User struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	DeletedAt    *time.Time
+
+	// OnboardingCompletedAt is set when the user finishes (or explicitly
+	// skips) the interactive onboarding flow. Nil means onboarding is still
+	// pending and the client should keep redirecting the user.
+	OnboardingCompletedAt *time.Time
 }
 
 type Session struct {

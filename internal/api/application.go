@@ -24,32 +24,34 @@ type Application struct {
 	// endpoints. Created per app instance so tests get isolated state.
 	RateLimiter *middleware.Limiter
 
-	Auth     *service.AuthService
-	Email    *service.EmailService
-	Org      *service.OrganizerService
-	Event    *service.EventService
-	Comment  *service.CommentService
-	Like     *service.LikeService
-	Save     *service.SaveService
-	Share    *service.ShareService
-	Follow   *service.FollowService
-	Rsvp     *service.RsvpService
-	Review   *service.ReviewService
-	Report   *service.ReportService
-	Notify   *service.NotificationService
-	Remind   *service.ReminderService
-	Venue    *service.VenueService
-	Admin    *service.AdminService
-	Media    *service.MediaService
-	Order    *service.OrderService
-	Payment  *service.PaymentService
-	Sync     *service.SyncService
-	Device   *service.DeviceService
-	Moment   *service.MomentService
-	Schedule *service.ScheduleService
-	Question *service.QuestionService
-	Badge    *service.BadgeService
-	Recap    *service.RecapService
+	Auth      *service.AuthService
+	Email     *service.EmailService
+	Org       *service.OrganizerService
+	Event     *service.EventService
+	Comment   *service.CommentService
+	Like      *service.LikeService
+	Save      *service.SaveService
+	Share     *service.ShareService
+	Follow    *service.FollowService
+	Rsvp      *service.RsvpService
+	Review    *service.ReviewService
+	Report    *service.ReportService
+	Notify    *service.NotificationService
+	Remind    *service.ReminderService
+	Venue     *service.VenueService
+	Admin     *service.AdminService
+	Media     *service.MediaService
+	Order     *service.OrderService
+	Payment   *service.PaymentService
+	Sync      *service.SyncService
+	Device    *service.DeviceService
+	Moment    *service.MomentService
+	Schedule  *service.ScheduleService
+	Question  *service.QuestionService
+	Badge     *service.BadgeService
+	Recap     *service.RecapService
+	Prefs     *service.PreferencesService
+	Analytics *service.AnalyticsService
 
 	// Storage backs the media pipeline (local files for dev/tests, S3/R2 for
 	// production). Exposed so handlers/workers can reach it when needed.
@@ -135,6 +137,8 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Question:    service.NewQuestionService(questionRepo, questionRepo, events, orgs),
 		Badge:       service.NewBadgeService(repository.NewBadgeRepository(pool)),
 		Recap:       service.NewRecapService(repository.NewRecapRepository(pool), events),
+		Prefs:       service.NewPreferencesService(repository.NewCategoryPreferenceRepository(pool), users),
+		Analytics:   service.NewAnalyticsService(repository.NewAnalyticsRepository(pool), cfg),
 	}
 
 	// Payment gateway (Phase 15): provider checkouts on order creation and the

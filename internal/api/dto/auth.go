@@ -30,6 +30,9 @@ type UserDTO struct {
 	Role       string    `json:"role"`
 	IsVerified bool      `json:"is_verified"`
 	CreatedAt  time.Time `json:"created_at"`
+	// OnboardingCompleted is true once the user finished (or explicitly
+	// skipped) the interactive onboarding flow.
+	OnboardingCompleted bool `json:"onboarding_completed"`
 }
 
 type AuthResponse struct {

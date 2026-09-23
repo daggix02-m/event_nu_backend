@@ -90,12 +90,20 @@ func main() {
 		pusher,
 	)
 
+	// Phase 33: recompute the daily analytics rollup + retention.
+	analyticsConsumer := worker.NewAnalyticsRollupConsumer(
+		logger,
+		cfg,
+		repository.NewAnalyticsRepository(pool),
+	)
+
 	logger.Info("worker starting", "email_provider", cfg.EmailProvider, "storage_provider", cfg.MediaStorageProvider, "push_provider", cfg.PushProvider)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return emailConsumer.Run(gctx) })
 	g.Go(func() error { return mediaConsumer.Run(gctx) })
 	g.Go(func() error { return pushConsumer.Run(gctx) })
+	g.Go(func() error { return analyticsConsumer.Run(gctx) })
 	if err := g.Wait(); err != nil {
 		logger.Error("consumer error", "error", err.Error())
 		os.Exit(1)

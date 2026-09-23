@@ -27,13 +27,14 @@ func (r *UserRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-const userColumns = "id, email, password_hash, username, COALESCE(bio, ''), COALESCE(photo_url, ''), role, is_verified, status, created_at, updated_at, deleted_at"
+const userColumns = "id, email, password_hash, username, COALESCE(bio, ''), COALESCE(photo_url, ''), role, is_verified, status, created_at, updated_at, deleted_at, onboarding_completed_at"
 
 func scanUser(row pgx.Row) (*domain.User, error) {
 	var u domain.User
 	err := row.Scan(
 		&u.ID, &u.Email, &u.PasswordHash, &u.Username, &u.Bio, &u.PhotoURL,
 		&u.Role, &u.IsVerified, &u.Status, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt,
+		&u.OnboardingCompletedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, shared.ErrNotFound
@@ -114,4 +115,17 @@ func (r *UserRepository) UpdateProfile(ctx context.Context, id string, username,
 		return nil, err
 	}
 	return user, nil
+}
+
+// CompleteOnboarding stamps onboarding_completed_at for the user. COALESCE
+// keeps the stamp exactly-once: a second call (skip after a finished flow, or
+// a double-submitted skip) never overwrites the original timestamp.
+func (r *UserRepository) CompleteOnboarding(ctx context.Context, id string) (*domain.User, error) {
+	row := r.q(ctx).QueryRow(ctx, `
+		UPDATE users
+		SET onboarding_completed_at = COALESCE(onboarding_completed_at, now()),
+		    updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING `+userColumns, id)
+	return scanUser(row)
 }

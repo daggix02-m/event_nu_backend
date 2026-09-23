@@ -100,6 +100,15 @@ type Config struct {
 	MediaJobBatchSize      int
 	MediaJobMaxAttempts    int
 	MediaJobRetryBaseDelay time.Duration
+
+	// First-party analytics (Phase 33). Ingest limits guard the rate-limited
+	// batch endpoint; the rollup worker recomputes daily aggregates.
+	AnalyticsIngestRateLimit    int
+	AnalyticsIngestRateWindow   time.Duration
+	AnalyticsMaxBatch           int
+	AnalyticsMaxPropertiesBytes int
+	AnalyticsRetentionDays      int
+	AnalyticsRollupPollInterval time.Duration
 }
 
 // parseDuration supports Go durations ("15m", "1h") plus day suffixes ("30d").
@@ -272,6 +281,38 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("MEDIA_JOB_RETRY_BASE_DELAY must be > 0")
 	}
 
+	if cfg.AnalyticsIngestRateLimit, err = strconv.Atoi(getEnv("ANALYTICS_INGEST_RATE_LIMIT", "600")); err != nil {
+		return Config{}, fmt.Errorf("ANALYTICS_INGEST_RATE_LIMIT must be an integer: %w", err)
+	}
+	if cfg.AnalyticsIngestRateWindow, err = parseDuration(getEnv("ANALYTICS_INGEST_RATE_WINDOW", "1m")); err != nil {
+		return Config{}, fmt.Errorf("ANALYTICS_INGEST_RATE_WINDOW: %w", err)
+	}
+	if cfg.AnalyticsMaxBatch, err = strconv.Atoi(getEnv("ANALYTICS_MAX_BATCH", "100")); err != nil {
+		return Config{}, fmt.Errorf("ANALYTICS_MAX_BATCH must be an integer: %w", err)
+	}
+	if cfg.AnalyticsMaxPropertiesBytes, err = strconv.Atoi(getEnv("ANALYTICS_MAX_PROPERTIES_BYTES", "2048")); err != nil {
+		return Config{}, fmt.Errorf("ANALYTICS_MAX_PROPERTIES_BYTES must be an integer: %w", err)
+	}
+	if cfg.AnalyticsRetentionDays, err = strconv.Atoi(getEnv("ANALYTICS_RETENTION_DAYS", "90")); err != nil {
+		return Config{}, fmt.Errorf("ANALYTICS_RETENTION_DAYS must be an integer: %w", err)
+	}
+	if cfg.AnalyticsRollupPollInterval, err = parseDuration(getEnv("ANALYTICS_ROLLUP_POLL_INTERVAL", "1m")); err != nil {
+		return Config{}, fmt.Errorf("ANALYTICS_ROLLUP_POLL_INTERVAL: %w", err)
+	}
+
+	if cfg.AnalyticsMaxBatch <= 0 || cfg.AnalyticsMaxBatch > 500 {
+		return Config{}, fmt.Errorf("ANALYTICS_MAX_BATCH must be between 1 and 500")
+	}
+	if cfg.AnalyticsMaxPropertiesBytes <= 0 {
+		return Config{}, fmt.Errorf("ANALYTICS_MAX_PROPERTIES_BYTES must be > 0")
+	}
+	if cfg.AnalyticsRetentionDays <= 0 {
+		return Config{}, fmt.Errorf("ANALYTICS_RETENTION_DAYS must be > 0")
+	}
+	if cfg.AnalyticsRollupPollInterval <= 0 {
+		return Config{}, fmt.Errorf("ANALYTICS_ROLLUP_POLL_INTERVAL must be > 0")
+	}
+
 	cfg.PaymentProvider = getEnv("PAYMENT_PROVIDER", "noop")
 	cfg.ChapaSecretKey = getEnv("CHAPA_SECRET_KEY", "")
 	cfg.ChapaAPIBase = getEnv("CHAPA_API_BASE", "https://api.chapa.co/v1")
@@ -335,6 +376,7 @@ func Load() (Config, error) {
 		{cfg.AuthRegisterLimit, cfg.AuthRegisterWindow, "AUTH_REGISTER"},
 		{cfg.AuthRefreshLimit, cfg.AuthRefreshWindow, "AUTH_REFRESH"},
 		{cfg.AuthVerifyLimit, cfg.AuthVerifyWindow, "AUTH_VERIFY"},
+		{cfg.AnalyticsIngestRateLimit, cfg.AnalyticsIngestRateWindow, "ANALYTICS_INGEST"},
 	} {
 		if rl.limit <= 0 {
 			return Config{}, fmt.Errorf("%s_RATE_LIMIT must be > 0", rl.name)

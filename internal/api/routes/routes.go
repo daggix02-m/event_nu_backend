@@ -45,6 +45,8 @@ func New(app *api.Application) http.Handler {
 	questions := handlers.NewQuestionHandlers(app, app.Question)
 	badges := handlers.NewBadgeHandlers(app, app.Badge)
 	recaps := handlers.NewRecapHandlers(app, app.Recap)
+	prefs := handlers.NewPreferencesHandlers(app, app.Prefs)
+	analyticsHandlers := handlers.NewAnalyticsHandlers(app, app.Analytics)
 
 	// Public/auth-critical routes run under the trusted 'service' role so RLS
 	// allows login/registration (identity does not exist yet at that point).
@@ -68,11 +70,26 @@ func New(app *api.Application) http.Handler {
 	refreshRule := middleware.Rule{Limit: app.Config.AuthRefreshLimit, Window: app.Config.AuthRefreshWindow}
 	verifyRule := middleware.Rule{Limit: app.Config.AuthVerifyLimit, Window: app.Config.AuthVerifyWindow}
 
+	// Analytics ingestion is rate-limited by IP (telemetry is anonymous or
+	// self-attributed — no account bucket). Runs under the trusted 'service'
+	// role so the INSERT policy can verify user_id against the caller's RLS
+	// identity; anonymous batches insert NULL user_id.
+	ingestRule := middleware.Rule{Limit: app.Config.AnalyticsIngestRateLimit, Window: app.Config.AnalyticsIngestRateWindow}
+
 	mux.Handle("POST /api/v1/auth/register", rateLimited(auth.Register, withIPAndAccount(registerRule)...))
 	mux.Handle("POST /api/v1/auth/login", rateLimited(auth.Login, withIPAndAccount(loginRule)...))
 	mux.Handle("POST /api/v1/auth/refresh", rateLimited(auth.Refresh, withIP(refreshRule)...))
 	mux.Handle("POST /api/v1/auth/logout", service(auth.Logout))
 	mux.Handle("POST /api/v1/auth/verify", rateLimited(email.VerifyPOST, withIP(verifyRule)...))
+	// First-party analytics ingest (Phase 33). Never rejects anonymous callers;
+	// a valid Bearer token only lets the server attribute events to that user.
+	ingest := func(h http.HandlerFunc) http.Handler {
+		return middleware.RateLimit(app.RateLimiter, withIP(ingestRule)...)(
+			middleware.OptionalAuth(app.Auth)(
+				middleware.WithRole("service")(
+					middleware.SetRLS(h))))
+	}
+	mux.Handle("POST /api/v1/analytics/events", ingest(analyticsHandlers.Ingest))
 
 	// Public read routes: role 'user' with no identity — RLS gates visibility
 	// purely on row content (published/active/non-deleted).
@@ -110,6 +127,13 @@ func New(app *api.Application) http.Handler {
 	}
 	mux.Handle("GET /api/v1/users/me", protected(auth.Me))
 	mux.Handle("PATCH /api/v1/users/me", protected(auth.UpdateMe))
+	// Onboarding & preferences (Phase 33): GET the user's interest categories,
+	// PUT a full replace (which completes onboarding), or explicitly skip.
+	// Skip is idempotent and needs no body, so both stay retry-safe without an
+	// Idempotency-Key.
+	mux.Handle("GET /api/v1/users/me/preferences", protected(prefs.Get))
+	mux.Handle("PUT /api/v1/users/me/preferences", protected(prefs.Replace))
+	mux.Handle("POST /api/v1/users/me/onboarding/skip", protected(prefs.SkipOnboarding))
 	mux.Handle("POST /api/v1/organizer-applications", protectedIdem(org.Apply))
 	mux.Handle("GET /api/v1/organizer-applications/me", protected(org.GetMyApplication))
 	mux.Handle("POST /api/v1/venues", protectedIdem(events.CreateVenue))
@@ -229,6 +253,13 @@ func New(app *api.Application) http.Handler {
 	mux.Handle("POST /api/v1/admin/reports/{id}/resolve", admin(adminHandlers.ResolveReport))
 	mux.Handle("POST /api/v1/admin/events/{id}/block", admin(adminHandlers.BlockEvent))
 	mux.Handle("POST /api/v1/admin/events/{id}/restore", admin(adminHandlers.RestoreEvent))
+	// Admin analytics (Phase 33): dashboards read the rollup table only. Raw
+	// events stay worker-private (RLS), so these endpoints can never leak raw
+	// per-user behavior.
+	mux.Handle("GET /api/v1/admin/analytics/feature-usage", admin(analyticsHandlers.Usage))
+	mux.Handle("GET /api/v1/admin/analytics/funnels/event-creation", admin(analyticsHandlers.FunnelEventCreation))
+	mux.Handle("GET /api/v1/admin/analytics/funnels/organizer-application", admin(analyticsHandlers.FunnelOrganizerApplication))
+	mux.Handle("GET /api/v1/admin/analytics/onboarding", admin(analyticsHandlers.Onboarding))
 
 	allowed := make(map[string]struct{}, len(app.Config.CORSAllowedOrigins))
 	for _, o := range app.Config.CORSAllowedOrigins {
