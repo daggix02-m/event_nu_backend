@@ -226,6 +226,51 @@ func (r *EventRepository) AdminListByOrganizer(ctx context.Context, organizerID 
 	return events, rows.Err()
 }
 
+// ListByOrganizer returns an organizer's events matching an optional status
+// filter, newest starts_at first, bounded by limit/offset.
+func (r *EventRepository) ListByOrganizer(ctx context.Context, organizerID string, status string, limit, offset int) ([]*domain.Event, error) {
+	query := `SELECT ` + eventColumns + ` FROM events WHERE organizer_id = $1 AND deleted_at IS NULL`
+	args := []any{organizerID}
+	if status != "" {
+		args = append(args, status)
+		query += fmt.Sprintf(` AND status = $%d`, len(args))
+	}
+	query += fmt.Sprintf(` ORDER BY starts_at DESC, id LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
+	args = append(args, limit, offset)
+
+	rows, err := r.q(ctx).Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list organizer events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []*domain.Event
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
+// CountByOrganizerFiltered returns the count of an organizer's events with an optional status filter.
+func (r *EventRepository) CountByOrganizerFiltered(ctx context.Context, organizerID string, status string) (int, error) {
+	query := `SELECT count(*) FROM events WHERE organizer_id = $1 AND deleted_at IS NULL`
+	args := []any{organizerID}
+	if status != "" {
+		args = append(args, status)
+		query += fmt.Sprintf(` AND status = $%d`, len(args))
+	}
+	var total int
+	err := r.q(ctx).QueryRow(ctx, query, args...).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("count organizer events: %w", err)
+	}
+	return total, nil
+}
+
 // ListByVenue returns published events at a venue (used by venue detail).
 func (r *EventRepository) ListByVenue(ctx context.Context, venueID string, limit, offset int) ([]*domain.Event, error) {
 	rows, err := r.q(ctx).Query(ctx, `

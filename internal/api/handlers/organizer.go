@@ -46,6 +46,33 @@ func (h *OrganizerHandlers) GetMyApplication(w http.ResponseWriter, r *http.Requ
 	shared.WriteJSON(w, http.StatusOK, toApplicationDTO(app))
 }
 
+func (h *OrganizerHandlers) GetMyOrganizer(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserID(r.Context())
+	org, err := h.org.GetOrganizerByOwner(r.Context(), userID)
+	if err != nil {
+		h.app.AppError(w, r, err)
+		return
+	}
+	logoURL := ""
+	if org.LogoMediaID != nil && h.app != nil && h.app.Media != nil {
+		if logo, err := h.app.Media.ResolveOrganizerLogo(r.Context(), org.LogoMediaID); err == nil {
+			logoURL = logo
+		} else if h.app.Logger != nil {
+			h.app.Logger.Warn("my organizer logo resolution unavailable", "organizer_id", org.ID, "error", err.Error())
+		}
+	}
+	shared.WriteJSON(w, http.StatusOK, dto.MyOrganizerDTO{
+		ID:         org.ID,
+		Slug:       org.Slug,
+		Name:       org.Name,
+		Bio:        org.Bio,
+		Status:     org.Status,
+		LogoURL:    logoURL,
+		EventCount: org.EventCount,
+		CreatedAt:  org.CreatedAt,
+	})
+}
+
 func (h *OrganizerHandlers) Approve(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {

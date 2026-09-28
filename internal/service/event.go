@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -23,6 +24,8 @@ type eventStore interface {
 	CountVisible(ctx context.Context, filters domain.EventFilters) (int, error)
 	ListByVenue(ctx context.Context, venueID string, limit, offset int) ([]*domain.Event, error)
 	CountByVenue(ctx context.Context, venueID string) (int, error)
+	ListByOrganizer(ctx context.Context, organizerID string, status string, limit, offset int) ([]*domain.Event, error)
+	CountByOrganizerFiltered(ctx context.Context, organizerID string, status string) (int, error)
 }
 
 type venueStore interface {
@@ -230,6 +233,29 @@ func (s *EventService) ListEvents(ctx context.Context, filters domain.EventFilte
 		return PageResult[*domain.Event]{}, err
 	}
 	total, err := s.events.CountVisible(ctx, filters)
+	if err != nil {
+		return PageResult[*domain.Event]{}, err
+	}
+	return PageResult[*domain.Event]{Items: items, Total: total}, nil
+}
+
+// ListMyEvents returns the caller's organizer's events across all lifecycle
+// statuses (including drafts), filtered by optional status, ordered newest starts_at first.
+// If the caller has no organizer, returns an empty PageResult (no error).
+func (s *EventService) ListMyEvents(ctx context.Context, userID, status string, page, limit int) (PageResult[*domain.Event], error) {
+	org, err := s.orgs.GetOrganizerByOwner(ctx, userID)
+	if err != nil {
+		if errors.Is(err, shared.ErrNotFound) {
+			return PageResult[*domain.Event]{Items: []*domain.Event{}, Total: 0}, nil
+		}
+		return PageResult[*domain.Event]{}, err
+	}
+	offset := (page - 1) * limit
+	items, err := s.events.ListByOrganizer(ctx, org.ID, status, limit, offset)
+	if err != nil {
+		return PageResult[*domain.Event]{}, err
+	}
+	total, err := s.events.CountByOrganizerFiltered(ctx, org.ID, status)
 	if err != nil {
 		return PageResult[*domain.Event]{}, err
 	}

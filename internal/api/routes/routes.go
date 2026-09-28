@@ -136,6 +136,8 @@ func New(app *api.Application) http.Handler {
 	mux.Handle("POST /api/v1/users/me/onboarding/skip", protected(prefs.SkipOnboarding))
 	mux.Handle("POST /api/v1/organizer-applications", protectedIdem(org.Apply))
 	mux.Handle("GET /api/v1/organizer-applications/me", protected(org.GetMyApplication))
+	mux.Handle("GET /api/v1/me/organizer", protected(org.GetMyOrganizer))
+	mux.Handle("GET /api/v1/me/events", protected(events.ListMyEvents))
 	mux.Handle("POST /api/v1/venues", protectedIdem(events.CreateVenue))
 	mux.Handle("POST /api/v1/events", protectedIdem(events.CreateEvent))
 	mux.Handle("PATCH /api/v1/events/{id}", protected(events.UpdateEvent))

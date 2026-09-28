@@ -205,3 +205,19 @@ type FollowState struct {
 	FollowerCount int  `json:"follower_count"`
 	FollowedByMe  bool `json:"followed_by_me"`
 }
+
+// MyOrganizerDTO is the authenticated caller's own organizer profile.
+// Unlike AdminOrganizerDTO, it does not echo owner_user_id (which is redundant
+// on a caller-scoped endpoint). Unlike the public OrganizerDTO, it does not
+// carry social fields (follower_count, followed_by_me), but carries logo_url
+// and event_count so the organizer dashboard can render its logo and stats.
+type MyOrganizerDTO struct {
+	ID         string    `json:"id"`
+	Slug       string    `json:"slug"`
+	Name       string    `json:"name"`
+	Bio        string    `json:"bio"`
+	Status     string    `json:"status"`
+	LogoURL    string    `json:"logo_url,omitempty"`
+	EventCount int       `json:"event_count"`
+	CreatedAt  time.Time `json:"created_at"`
+}

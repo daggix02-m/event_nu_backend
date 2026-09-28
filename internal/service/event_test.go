@@ -15,15 +15,17 @@ import (
 // stubEventStore implements eventStore with scripted methods so EventService
 // can be tested without a database.
 type stubEventStore struct {
-	onGetByID       func(id string) (*domain.Event, error)
-	onCreate        func(e *domain.Event) (*domain.Event, error)
-	onUpdate        func(e *domain.Event) (*domain.Event, error)
-	onUpdateStatus  func(id, status string) error
-	onSetModeration func(id, moderation string) error
-	onListVisible   func(filters domain.EventFilters, limit, offset int) ([]*domain.Event, error)
-	onCountVisible  func(filters domain.EventFilters) (int, error)
-	onListByVenue   func(venueID string, limit, offset int) ([]*domain.Event, error)
-	onCountByVenue  func(venueID string) (int, error)
+	onGetByID                func(id string) (*domain.Event, error)
+	onCreate                 func(e *domain.Event) (*domain.Event, error)
+	onUpdate                 func(e *domain.Event) (*domain.Event, error)
+	onUpdateStatus           func(id, status string) error
+	onSetModeration          func(id, moderation string) error
+	onListVisible            func(filters domain.EventFilters, limit, offset int) ([]*domain.Event, error)
+	onCountVisible           func(filters domain.EventFilters) (int, error)
+	onListByVenue            func(venueID string, limit, offset int) ([]*domain.Event, error)
+	onCountByVenue           func(venueID string) (int, error)
+	onListByOrganizer        func(organizerID string, status string, limit, offset int) ([]*domain.Event, error)
+	onCountByOrganizerFilter func(organizerID string, status string) (int, error)
 }
 
 func (s stubEventStore) GetByID(ctx context.Context, id string) (*domain.Event, error) {
@@ -87,6 +89,20 @@ func (s stubEventStore) CountByVenue(ctx context.Context, venueID string) (int, 
 		return 0, nil
 	}
 	return s.onCountByVenue(venueID)
+}
+
+func (s stubEventStore) ListByOrganizer(ctx context.Context, organizerID string, status string, limit, offset int) ([]*domain.Event, error) {
+	if s.onListByOrganizer == nil {
+		return nil, nil
+	}
+	return s.onListByOrganizer(organizerID, status, limit, offset)
+}
+
+func (s stubEventStore) CountByOrganizerFiltered(ctx context.Context, organizerID string, status string) (int, error) {
+	if s.onCountByOrganizerFilter == nil {
+		return 0, nil
+	}
+	return s.onCountByOrganizerFilter(organizerID, status)
 }
 
 type stubVenueStore struct {

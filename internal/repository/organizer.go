@@ -140,9 +140,9 @@ func (r *OrganizerRepository) GetOrganizerByID(ctx context.Context, id string) (
 }
 
 func (r *OrganizerRepository) GetOrganizerByOwner(ctx context.Context, userID string) (*domain.Organizer, error) {
-	return scanOrganizer(r.q(ctx).QueryRow(ctx, `
-		SELECT `+organizerColumns+`
-		FROM organizers WHERE owner_user_id = $1 AND deleted_at IS NULL LIMIT 1`, userID))
+	return scanOrganizerList(r.q(ctx).QueryRow(ctx, `
+		SELECT `+organizerListColumns+`
+		FROM organizers o WHERE o.owner_user_id = $1 AND o.deleted_at IS NULL LIMIT 1`, userID))
 }
 
 // GetOrganizerBySlug resolves a live organizer by slug (used to surface a 409

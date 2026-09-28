@@ -74,6 +74,10 @@ func (s *OrganizerService) GetMyApplication(ctx context.Context, userID string) 
 	return s.orgs.GetApplicationByUser(ctx, userID)
 }
 
+func (s *OrganizerService) GetOrganizerByOwner(ctx context.Context, userID string) (*domain.Organizer, error) {
+	return s.orgs.GetOrganizerByOwner(ctx, userID)
+}
+
 // GetOrganizer resolves an organizer by id. Visibility is enforced by the
 // organizers_read_public policy (active + not archived), so a suspended or
 // deleted organizer surfaces as ErrNotFound to non-privileged readers.

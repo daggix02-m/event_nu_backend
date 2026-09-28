@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/daggix02-m/event_nu/backend/internal/api"
@@ -168,6 +169,29 @@ func (h *EventHandlers) ListEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.event.ListEvents(r.Context(), filters, page, limit)
+	if err != nil {
+		h.app.AppError(w, r, err)
+		return
+	}
+	out := make([]dto.EventDTO, 0, len(result.Items))
+	for _, e := range result.Items {
+		out = append(out, h.enrichedEventDTO(r, e))
+	}
+	writePaginated(w, http.StatusOK, out, dto.PaginationMeta{
+		Page:    page,
+		Limit:   limit,
+		Total:   result.Total,
+		HasNext: page*limit < result.Total,
+	})
+}
+
+func (h *EventHandlers) ListMyEvents(w http.ResponseWriter, r *http.Request) {
+	page, limit, ok := parsePagination(w, r)
+	if !ok {
+		return
+	}
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	result, err := h.event.ListMyEvents(r.Context(), middleware.UserID(r.Context()), status, page, limit)
 	if err != nil {
 		h.app.AppError(w, r, err)
 		return
