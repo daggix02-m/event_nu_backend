@@ -71,6 +71,47 @@ func (r *AnalyticsRepository) RollupDay(ctx context.Context, day time.Time) (int
 	return int(tag.RowsAffected()), nil
 }
 
+// DailyMetrics returns the per-day admin series over the last `days` days
+// (window) plus the equal-length window immediately before it (previous), in
+// ascending day order — the 2×window the admin Overview needs to render real
+// day-series + Δ% deltas. All four metrics come from the business tables:
+// events_published reads events.published_at (a real per-day publish signal,
+// set atomically when a draft/cancelled event is published — see migration
+// 00024); the other three read the tables' created_at day buckets. No status
+// guesswork, no fabricated backfill.
+func (r *AnalyticsRepository) DailyMetrics(ctx context.Context, days int) ([]domain.DailyMetricRow, error) {
+	rows, err := r.q(ctx).Query(ctx, `
+		WITH days AS (
+			SELECT g::date AS day
+			FROM generate_series(
+				(now() AT TIME ZONE 'UTC')::date - ($1::int * 2 - 1),
+				(now() AT TIME ZONE 'UTC')::date,
+				'1 day'::interval
+			) g
+		)
+		SELECT d.day,
+			COALESCE((SELECT count(*) FROM events e WHERE e.published_at::date = d.day), 0) AS events_published,
+			COALESCE((SELECT count(*) FROM events e WHERE e.created_at::date = d.day), 0) AS events_created,
+			COALESCE((SELECT count(*) FROM users u WHERE u.created_at::date = d.day), 0) AS users_registered,
+			COALESCE((SELECT count(*) FROM organizers o WHERE o.created_at::date = d.day), 0) AS organizers_created
+		FROM days d
+		ORDER BY d.day`, days)
+	if err != nil {
+		return nil, fmt.Errorf("daily metrics: %w", err)
+	}
+	defer rows.Close()
+
+	var out []domain.DailyMetricRow
+	for rows.Next() {
+		var m domain.DailyMetricRow
+		if err := rows.Scan(&m.Day, &m.EventsPublished, &m.EventsCreated, &m.UsersRegistered, &m.OrganizersCreated); err != nil {
+			return nil, fmt.Errorf("scan daily metric row: %w", err)
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // DeleteBefore removes raw events strictly older than the retention window.
 // The second conjunct (UTC date < utcToday) guarantees the current UTC day is
 // never touched, so a partially-rolled day can't lose events between rollups.

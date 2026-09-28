@@ -253,6 +253,30 @@ func New(app *api.Application) http.Handler {
 	mux.Handle("POST /api/v1/admin/reports/{id}/resolve", admin(adminHandlers.ResolveReport))
 	mux.Handle("POST /api/v1/admin/events/{id}/block", admin(adminHandlers.BlockEvent))
 	mux.Handle("POST /api/v1/admin/events/{id}/restore", admin(adminHandlers.RestoreEvent))
+	// Admin organizers (Phase 34, slice 1): direct (non-apply) provisioning
+	// plus queue-independent listing/detail.
+	mux.Handle("GET /api/v1/admin/organizers", admin(adminHandlers.ListOrganizers))
+	mux.Handle("GET /api/v1/admin/organizers/{id}", admin(adminHandlers.GetOrganizer))
+	mux.Handle("POST /api/v1/admin/organizers", admin(adminHandlers.CreateOrganizer))
+	// Admin users directory (Phase 34, slice 2): spec §10 suspend/restore plus
+	// directory edits with the self-demote/suspend guard.
+	mux.Handle("GET /api/v1/admin/users", admin(adminHandlers.ListUsers))
+	mux.Handle("PATCH /api/v1/admin/users/{id}", admin(adminHandlers.UpdateUser))
+	mux.Handle("POST /api/v1/admin/users/{id}/suspend", admin(adminHandlers.SuspendUser))
+	mux.Handle("POST /api/v1/admin/users/{id}/restore", admin(adminHandlers.RestoreUser))
+	// Admin venues (Phase 34, slice 3): directory (no active-only restriction —
+	// suspended venues stay visible) plus organizer-bound provisioning.
+	mux.Handle("GET /api/v1/admin/venues", admin(adminHandlers.ListVenues))
+	mux.Handle("POST /api/v1/admin/venues", admin(adminHandlers.CreateVenue))
+	// Admin events (Phase 34, slice 4): detail, atomic create (organizer and
+	// venue resolve-or-create + publish), reassign organizer, edit-any, and the
+	// publish/cancel lifecycle pair.
+	mux.Handle("GET /api/v1/admin/events/{id}", admin(adminHandlers.GetEvent))
+	mux.Handle("POST /api/v1/admin/events", admin(adminHandlers.CreateEvent))
+	mux.Handle("PATCH /api/v1/admin/events/{id}/organizer", admin(adminHandlers.ReassignOrganizer))
+	mux.Handle("PATCH /api/v1/admin/events/{id}", admin(adminHandlers.UpdateEvent))
+	mux.Handle("POST /api/v1/admin/events/{id}/publish", admin(adminHandlers.PublishEvent))
+	mux.Handle("POST /api/v1/admin/events/{id}/cancel", admin(adminHandlers.CancelEvent))
 	// Admin analytics (Phase 33): dashboards read the rollup table only. Raw
 	// events stay worker-private (RLS), so these endpoints can never leak raw
 	// per-user behavior.
@@ -260,6 +284,7 @@ func New(app *api.Application) http.Handler {
 	mux.Handle("GET /api/v1/admin/analytics/funnels/event-creation", admin(analyticsHandlers.FunnelEventCreation))
 	mux.Handle("GET /api/v1/admin/analytics/funnels/organizer-application", admin(analyticsHandlers.FunnelOrganizerApplication))
 	mux.Handle("GET /api/v1/admin/analytics/onboarding", admin(analyticsHandlers.Onboarding))
+	mux.Handle("GET /api/v1/admin/analytics/daily-metrics", admin(analyticsHandlers.DailyMetrics))
 
 	allowed := make(map[string]struct{}, len(app.Config.CORSAllowedOrigins))
 	for _, o := range app.Config.CORSAllowedOrigins {

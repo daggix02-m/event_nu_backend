@@ -73,6 +73,15 @@ func TestInvalidUUIDPathParamsReturn404(t *testing.T) {
 		{"resolve report", adminH.ResolveReport, http.MethodPost, "/api/v1/admin/reports/{id}/resolve"},
 		{"block event", adminH.BlockEvent, http.MethodPost, "/api/v1/admin/events/{id}/block"},
 		{"restore event", adminH.RestoreEvent, http.MethodPost, "/api/v1/admin/events/{id}/restore"},
+		{"admin organizer detail", adminH.GetOrganizer, http.MethodGet, "/api/v1/admin/organizers/{id}"},
+		{"admin event detail", adminH.GetEvent, http.MethodGet, "/api/v1/admin/events/{id}"},
+		{"admin event reassign", adminH.ReassignOrganizer, http.MethodPatch, "/api/v1/admin/events/{id}/organizer"},
+		{"admin event update", adminH.UpdateEvent, http.MethodPatch, "/api/v1/admin/events/{id}"},
+		{"admin event publish", adminH.PublishEvent, http.MethodPost, "/api/v1/admin/events/{id}/publish"},
+		{"admin event cancel", adminH.CancelEvent, http.MethodPost, "/api/v1/admin/events/{id}/cancel"},
+		{"admin user update", adminH.UpdateUser, http.MethodPatch, "/api/v1/admin/users/{id}"},
+		{"admin user suspend", adminH.SuspendUser, http.MethodPost, "/api/v1/admin/users/{id}/suspend"},
+		{"admin user restore", adminH.RestoreUser, http.MethodPost, "/api/v1/admin/users/{id}/restore"},
 	}
 
 	for _, tc := range cases {

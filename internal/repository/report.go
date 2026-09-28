@@ -42,12 +42,31 @@ func scanReport(row pgx.Row) (*domain.Report, error) {
 	return &r, nil
 }
 
+// reportQueueColumns aliases reports as `r` and joins users so the admin queue
+// listing can render the reporter's identity (username/email/avatar).
+const reportQueueColumns = `r.id, r.reporter_user_id, r.entity_type, r.entity_id, r.reason_code, COALESCE(r.description, '') AS description, r.status, r.resolution, r.resolved_at, r.created_at, r.updated_at, u.username, u.email, u.photo_url`
+
+func scanReportQueueItem(row pgx.Row) (*domain.Report, error) {
+	var r domain.Report
+	err := row.Scan(&r.ID, &r.ReporterUserID, &r.EntityType, &r.EntityID, &r.ReasonCode, &r.Description,
+		&r.Status, &r.Resolution, &r.ResolvedAt, &r.CreatedAt, &r.UpdatedAt,
+		&r.ReporterUsername, &r.ReporterEmail, &r.ReporterPhotoURL)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, shared.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan report queue item: %w", err)
+	}
+	return &r, nil
+}
+
 // ListAll returns all reports newest-first (admin RLS role sees every row).
 func (r *ReportRepository) ListAll(ctx context.Context, limit, offset int) ([]*domain.Report, error) {
 	rows, err := r.q(ctx).Query(ctx, `
-		SELECT `+reportColumns+`
-		FROM reports
-		ORDER BY created_at DESC, id
+		SELECT `+reportQueueColumns+`
+		FROM reports r
+		LEFT JOIN users u ON u.id = r.reporter_user_id
+		ORDER BY r.created_at DESC, r.id
 		LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list reports: %w", err)
@@ -56,7 +75,7 @@ func (r *ReportRepository) ListAll(ctx context.Context, limit, offset int) ([]*d
 
 	var out []*domain.Report
 	for rows.Next() {
-		rep, err := scanReport(rows)
+		rep, err := scanReportQueueItem(rows)
 		if err != nil {
 			return nil, err
 		}

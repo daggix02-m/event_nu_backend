@@ -124,7 +124,7 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Notify:      service.NewNotificationService(notifier, events, orgs),
 		Remind:      service.NewReminderService(reminders, events),
 		Venue:       service.NewVenueService(venues, events, orgs),
-		Admin:       service.NewAdminService(reports, events, orgs, events),
+		Admin:       service.NewAdminService(reports, events, orgs, events, orgs, users, venues),
 		Media:       media,
 		Order:       service.NewOrderService(repository.NewOrderRepository(pool), repository.NewTicketTypeRepository(pool), events, orgs, cfg.TicketQRSecret),
 		Storage:     store,
@@ -168,6 +168,8 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 	app.Notify.SetRsvpStore(rsvps)
 	// Event media attachment validation (owned, ready, right kind).
 	app.Event.SetMediaStore(media)
+	// Admin media attachment validation for console-created content.
+	app.Admin.SetMediaStore(media)
 
 	return app
 }

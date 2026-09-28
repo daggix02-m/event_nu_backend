@@ -19,6 +19,7 @@ type analyticsStore interface {
 	RollupDay(ctx context.Context, day time.Time) (int, error)
 	DeleteBefore(ctx context.Context, cutoff time.Time, utcToday time.Time) (int64, error)
 	Usage(ctx context.Context, days int) ([]domain.DailyUsage, error)
+	DailyMetrics(ctx context.Context, days int) ([]domain.DailyMetricRow, error)
 	Funnel(ctx context.Context, from, to time.Time, eventNames []string) ([]domain.FunnelStep, error)
 }
 
@@ -96,13 +97,38 @@ func (s *AnalyticsService) validateProperties(eventName string, props map[string
 	return shared.NewAppError("invalid_properties", "This event does not accept properties.", http.StatusBadRequest)
 }
 
-// Usage returns the daily rollup rows for the last n days (validating the
-// window so the admin dashboard cannot request an unbounded scan).
+// Usage is the public feature-rollup contract (analytics_daily_feature_usage):
+// the per-event daily rollup rows for the last n days, most recent day first.
 func (s *AnalyticsService) Usage(ctx context.Context, days int) ([]domain.DailyUsage, error) {
-	if days <= 0 || days > 90 {
-		return nil, shared.NewAppError("invalid_range", "days must be between 1 and 90.", http.StatusBadRequest)
-	}
 	return s.analytics.Usage(ctx, days)
+}
+
+// DailyMetrics is the 2×-window admin contract the Overview renders: the
+// current per-day series plus the equal-length prior series, so the console can
+// compute real Δ% deltas (no fabricated trends). The repository returns one
+// flat 2×window row set (older half first); we split it into the current window
+// (the last `days` rows) and the previous window (the first `days` rows) and
+// derive the current window's totals — the wire shape the Overview plan §8
+// (option A) fixes: {window, previous, totals}.
+func (s *AnalyticsService) DailyMetrics(ctx context.Context, days int) (domain.DailyMetricsSeries, domain.WindowTotals, error) {
+	if days <= 0 || days > 90 {
+		return domain.DailyMetricsSeries{}, domain.WindowTotals{}, shared.NewAppError("invalid_days", "days must be between 1 and 90.", http.StatusUnprocessableEntity)
+	}
+
+	rows, err := s.analytics.DailyMetrics(ctx, days)
+	if err != nil {
+		return domain.DailyMetricsSeries{}, domain.WindowTotals{}, err
+	}
+
+	series := domain.DailyMetricsSeries{Window: rows[days:], Previous: rows[:days]}
+	var totals domain.WindowTotals
+	for _, m := range series.Window {
+		totals.EventsPublished += m.EventsPublished
+		totals.EventsCreated += m.EventsCreated
+		totals.UsersRegistered += m.UsersRegistered
+		totals.OrganizersCreated += m.OrganizersCreated
+	}
+	return series, totals, nil
 }
 
 // Funnel returns the per-step aggregates for the named steps over an inclusive

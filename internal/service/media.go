@@ -187,6 +187,19 @@ func (s *MediaService) ResolveEventMedia(ctx context.Context, posterID, teaserID
 	return posterURL, teaserURL, nil
 }
 
+// ResolveOrganizerLogo maps an organizer's logo media id to its served URL
+// (card@1x). A nil id or an asset that is not yet ready resolves to "".
+func (s *MediaService) ResolveOrganizerLogo(ctx context.Context, logoMediaID *string) (string, error) {
+	if logoMediaID == nil {
+		return "", nil
+	}
+	urls, err := s.assets.ListVariantsForMediaIDs(ctx, []string{*logoMediaID}, domain.MediaVariantCard, "1x")
+	if err != nil {
+		return "", err
+	}
+	return urls[*logoMediaID], nil
+}
+
 func newObjectToken() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {

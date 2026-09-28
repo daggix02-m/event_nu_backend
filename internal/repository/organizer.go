@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/daggix02-m/event_nu/backend/internal/domain"
 	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
@@ -112,7 +113,7 @@ func (r *OrganizerRepository) RejectApplication(ctx context.Context, id, adminUs
 
 func scanOrganizer(row pgx.Row) (*domain.Organizer, error) {
 	var o domain.Organizer
-	err := row.Scan(&o.ID, &o.OwnerUserID, &o.Slug, &o.Name, &o.Bio, &o.Status, &o.CreatedAt, &o.UpdatedAt, &o.DeletedAt)
+	err := row.Scan(&o.ID, &o.OwnerUserID, &o.Slug, &o.Name, &o.Bio, &o.LogoMediaID, &o.Status, &o.CreatedAt, &o.UpdatedAt, &o.DeletedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, shared.ErrNotFound
 	}
@@ -122,14 +123,14 @@ func scanOrganizer(row pgx.Row) (*domain.Organizer, error) {
 	return &o, nil
 }
 
-const organizerColumns = "id, owner_user_id, slug, name, bio, status, created_at, updated_at, deleted_at"
+const organizerColumns = "id, owner_user_id, slug, name, bio, logo_media_id, status, created_at, updated_at, deleted_at"
 
 func (r *OrganizerRepository) CreateOrganizer(ctx context.Context, o *domain.Organizer) (*domain.Organizer, error) {
 	return scanOrganizer(r.q(ctx).QueryRow(ctx, `
-		INSERT INTO organizers (owner_user_id, slug, name, bio)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO organizers (owner_user_id, slug, name, bio, logo_media_id)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING `+organizerColumns,
-		o.OwnerUserID, o.Slug, o.Name, o.Bio))
+		o.OwnerUserID, o.Slug, o.Name, o.Bio, o.LogoMediaID))
 }
 
 func (r *OrganizerRepository) GetOrganizerByID(ctx context.Context, id string) (*domain.Organizer, error) {
@@ -144,14 +145,103 @@ func (r *OrganizerRepository) GetOrganizerByOwner(ctx context.Context, userID st
 		FROM organizers WHERE owner_user_id = $1 AND deleted_at IS NULL LIMIT 1`, userID))
 }
 
-const applicationQueueColumns = "oa.id, oa.user_id, oa.requested_name, oa.requested_slug, oa.bio, oa.supporting_data, oa.status, oa.reviewed_by, oa.reviewed_at, COALESCE(oa.review_notes, ''), oa.created_at, oa.updated_at, u.username, u.email"
+// GetOrganizerBySlug resolves a live organizer by slug (used to surface a 409
+// slug_taken before an insert).
+func (r *OrganizerRepository) GetOrganizerBySlug(ctx context.Context, slug string) (*domain.Organizer, error) {
+	return scanOrganizer(r.q(ctx).QueryRow(ctx, `
+		SELECT `+organizerColumns+`
+		FROM organizers WHERE slug = $1 AND deleted_at IS NULL`, slug))
+}
+
+// organizerListColumns = organizerColumns (aliased to `o`, as ListAdmin joins
+// nothing but must disambiguate the correlated event_count subquery) plus the
+// derived event count across every lifecycle status.
+const organizerListColumns = `o.id, o.owner_user_id, o.slug, o.name, o.bio, o.logo_media_id, o.status, o.created_at, o.updated_at, o.deleted_at,
+	(SELECT count(*) FROM events ev WHERE ev.organizer_id = o.id AND ev.deleted_at IS NULL) AS event_count`
+
+func scanOrganizerList(row pgx.Row) (*domain.Organizer, error) {
+	var o domain.Organizer
+	err := row.Scan(&o.ID, &o.OwnerUserID, &o.Slug, &o.Name, &o.Bio, &o.LogoMediaID,
+		&o.Status, &o.CreatedAt, &o.UpdatedAt, &o.DeletedAt, &o.EventCount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, shared.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan organizer list: %w", err)
+	}
+	return &o, nil
+}
+
+// escapeLikePattern escapes the SQL LIKE wildcards in user input so a search
+// term like "100%" matches literally instead of greedy-matching everything.
+func escapeLikePattern(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+// adminOrganizerClause builds the admin-list WHERE clause. q matches name or
+// slug (case-insensitive substring); status is a validated organizer_status.
+func adminOrganizerClause(q, status string) (string, []any) {
+	conds := []string{"o.deleted_at IS NULL"}
+	args := []any{}
+	if status != "" {
+		args = append(args, status)
+		conds = append(conds, fmt.Sprintf("o.status = $%d", len(args)))
+	}
+	if trimmed := strings.TrimSpace(q); trimmed != "" {
+		args = append(args, escapeLikePattern(trimmed))
+		conds = append(conds, fmt.Sprintf("(o.name ILIKE '%%' || $%d || '%%' OR o.slug ILIKE '%%' || $%d || '%%')", len(args), len(args)))
+	}
+	return strings.Join(conds, " AND "), args
+}
+
+// ListAdmin returns organizers matching the optional q/status filters, newest
+// first, with a derived event count. Runs under the admin RLS role, so every
+// row (active, suspended, archived) is visible.
+func (r *OrganizerRepository) ListAdmin(ctx context.Context, q, status string, limit, offset int) ([]*domain.Organizer, error) {
+	where, args := adminOrganizerClause(q, status)
+	rows, err := r.q(ctx).Query(ctx, `
+		SELECT `+organizerListColumns+`
+		FROM organizers o
+		WHERE `+where+`
+		ORDER BY o.created_at DESC, o.id
+		LIMIT $`+numArg(len(args)+1)+` OFFSET $`+numArg(len(args)+2),
+		append(args, limit, offset)...)
+	if err != nil {
+		return nil, fmt.Errorf("admin list organizers: %w", err)
+	}
+	defer rows.Close()
+
+	var out []*domain.Organizer
+	for rows.Next() {
+		o, err := scanOrganizerList(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// CountAdmin counts organizers matching the optional admin filters.
+func (r *OrganizerRepository) CountAdmin(ctx context.Context, q, status string) (int, error) {
+	where, args := adminOrganizerClause(q, status)
+	var total int
+	err := r.q(ctx).QueryRow(ctx, `
+		SELECT count(*) FROM organizers o WHERE `+where, args...).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("admin count organizers: %w", err)
+	}
+	return total, nil
+}
+
+const applicationQueueColumns = "oa.id, oa.user_id, oa.requested_name, oa.requested_slug, oa.bio, oa.supporting_data, oa.status, oa.reviewed_by, oa.reviewed_at, COALESCE(oa.review_notes, ''), oa.created_at, oa.updated_at, u.username, u.email, u.photo_url"
 
 func scanApplicationQueueItem(row pgx.Row) (*domain.OrganizerApplication, error) {
 	var a domain.OrganizerApplication
 	var data []byte
 	err := row.Scan(&a.ID, &a.UserID, &a.RequestedName, &a.RequestedSlug, &a.Bio, &data,
 		&a.Status, &a.ReviewedBy, &a.ReviewedAt, &a.ReviewNotes, &a.CreatedAt, &a.UpdatedAt,
-		&a.ApplicantUsername, &a.ApplicantEmail)
+		&a.ApplicantUsername, &a.ApplicantEmail, &a.ApplicantPhotoURL)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, shared.ErrNotFound
 	}

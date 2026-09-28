@@ -52,4 +52,10 @@ type Report struct {
 	ResolvedAt     *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	// ReporterUsername, ReporterEmail and ReporterPhotoURL carry the reporter's
+	// identity when the row is loaded by an admin queue listing (LEFT JOIN
+	// users). They are nil on every non-admin read path.
+	ReporterUsername *string
+	ReporterEmail    *string
+	ReporterPhotoURL *string
 }

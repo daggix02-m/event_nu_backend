@@ -68,3 +68,33 @@ type FunnelStep struct {
 	EventCount  int64
 	UniqueUsers int64
 }
+
+// DailyMetricRow is one day in the admin daily-metrics series. The first four
+// metrics are derived from the business tables (events / users / organizers),
+// while EventsPublished reads the analytics rollup's event_publish_completed
+// signal — the one honest per-day "published" source (events carry no
+// published_at timestamp, so a status-based day count would be fabricated).
+type DailyMetricRow struct {
+	Day               time.Time
+	EventsPublished   int64
+	EventsCreated     int64
+	UsersRegistered   int64
+	OrganizersCreated int64
+}
+
+// DailyMetricsSeries is the 2×-window view the admin Overview renders: the
+// current window's day series plus the equal-length prior window, so the
+// console can compute genuine Δ% deltas (no fabricated trends).
+type DailyMetricsSeries struct {
+	Window   []DailyMetricRow
+	Previous []DailyMetricRow
+}
+
+// WindowTotals aggregates each metric across one window (used for both the
+// current and the prior window; the client derives the delta between them).
+type WindowTotals struct {
+	EventsPublished   int64
+	EventsCreated     int64
+	UsersRegistered   int64
+	OrganizersCreated int64
+}

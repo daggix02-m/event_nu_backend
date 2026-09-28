@@ -186,6 +186,46 @@ func (r *EventRepository) AdminCount(ctx context.Context, status, moderation str
 	return total, nil
 }
 
+// CountByOrganizer counts every non-deleted event for an organizer across all
+// lifecycle statuses. It mirrors the correlated subquery used on the admin
+// organizer list so the detail view and the list never disagree.
+func (r *EventRepository) CountByOrganizer(ctx context.Context, organizerID string) (int, error) {
+	var total int
+	err := r.q(ctx).QueryRow(ctx, `
+		SELECT count(*) FROM events
+		WHERE organizer_id = $1 AND deleted_at IS NULL`, organizerID).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("count organizer events: %w", err)
+	}
+	return total, nil
+}
+
+// AdminListByOrganizer returns an organizer's events across all lifecycle
+// statuses, newest first, bounded by limit/offset. Used by the admin organizer
+// detail view ("recent events") — deliberately not restricted to published.
+func (r *EventRepository) AdminListByOrganizer(ctx context.Context, organizerID string, limit, offset int) ([]*domain.Event, error) {
+	rows, err := r.q(ctx).Query(ctx, `
+		SELECT `+eventColumns+`
+		FROM events
+		WHERE organizer_id = $1 AND deleted_at IS NULL
+		ORDER BY starts_at DESC, id
+		LIMIT $2 OFFSET $3`, organizerID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("admin list organizer events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []*domain.Event
+	for rows.Next() {
+		e, err := scanEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
 // ListByVenue returns published events at a venue (used by venue detail).
 func (r *EventRepository) ListByVenue(ctx context.Context, venueID string, limit, offset int) ([]*domain.Event, error) {
 	rows, err := r.q(ctx).Query(ctx, `
@@ -267,6 +307,13 @@ func eventSearchOrder(hasQuery bool) string {
 
 func numArg(n int) string {
 	return strconv.Itoa(n)
+}
+
+func (r *EventRepository) UpdateOrganizer(ctx context.Context, eventID, organizerID string) (*domain.Event, error) {
+	return scanEvent(r.q(ctx).QueryRow(ctx, `
+		UPDATE events SET organizer_id = $2, updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING `+eventColumns, eventID, organizerID))
 }
 
 func (r *EventRepository) Update(ctx context.Context, e *domain.Event) (*domain.Event, error) {

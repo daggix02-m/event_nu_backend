@@ -15,11 +15,12 @@ type OrganizerApplication struct {
 	ReviewNotes    string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
-	// ApplicantUsername and ApplicantEmail carry the applicant's identity when
-	// the row is loaded by an admin queue listing (LEFT JOIN users). They are
-	// nil on every non-admin read path.
+	// ApplicantUsername, ApplicantEmail and ApplicantPhotoURL carry the
+	// applicant's identity when the row is loaded by an admin queue listing
+	// (LEFT JOIN users). They are nil on every non-admin read path.
 	ApplicantUsername *string
 	ApplicantEmail    *string
+	ApplicantPhotoURL *string
 }
 
 type Organizer struct {
@@ -28,10 +29,15 @@ type Organizer struct {
 	Slug        string
 	Name        string
 	Bio         string
+	// LogoMediaID references an organizer_logo media asset (nil = no logo).
+	LogoMediaID *string
 	Status      string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time
+	// EventCount is populated only on the admin organizer listing (derived via
+	// a correlated count over events). It is 0 on every other read path.
+	EventCount int
 }
 
 type Venue struct {

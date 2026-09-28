@@ -36,3 +36,30 @@ type FunnelStepDTO struct {
 	EventCount  int64  `json:"event_count"`
 	UniqueUsers int64  `json:"unique_users"`
 }
+
+// DailyMetricDayDTO is one day in the admin daily-metrics series. All four
+// metrics are real business-table day counts (see domain.DailyMetricRow); no
+// fabricated deltas or status-based approximations on the wire.
+type DailyMetricDayDTO struct {
+	Day               string `json:"day"`
+	EventsPublished   int64  `json:"events_published"`
+	EventsCreated     int64  `json:"events_created"`
+	UsersRegistered   int64  `json:"users_registered"`
+	OrganizersCreated int64  `json:"organizers_created"`
+}
+
+// WindowTotalsDTO aggregates each metric across one admin window.
+type WindowTotalsDTO struct {
+	EventsPublished   int64 `json:"events_published"`
+	EventsCreated     int64 `json:"events_created"`
+	UsersRegistered   int64 `json:"users_registered"`
+	OrganizersCreated int64 `json:"organizers_created"`
+}
+
+// DailyMetricsResponse is the admin Overview's contract (§8 option A):
+// a 2×-window day series plus the current window's totals.
+type DailyMetricsResponse struct {
+	Window   []DailyMetricDayDTO `json:"window"`
+	Previous []DailyMetricDayDTO `json:"previous"`
+	Totals   WindowTotalsDTO     `json:"totals"`
+}

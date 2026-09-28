@@ -68,32 +68,40 @@ func NewReminderDTO(r *domain.ReminderWithEvent) ReminderDTO {
 	}
 }
 
-// AdminReportDTO is the admin-facing report queue item.
+// AdminReportDTO is the admin-facing report queue item. ReporterUsername,
+// ReporterEmail and ReporterPhotoURL carry the reporter's identity (populated
+// by the admin list's users join; nil elsewhere).
 type AdminReportDTO struct {
-	ID          string     `json:"id"`
-	ReporterID  string     `json:"reporter_user_id"`
-	EntityType  string     `json:"entity_type"`
-	EntityID    string     `json:"entity_id"`
-	ReasonCode  string     `json:"reason_code"`
-	Description string     `json:"description,omitempty"`
-	Status      string     `json:"status"`
-	Resolution  *string    `json:"resolution,omitempty"`
-	ResolvedAt  *time.Time `json:"resolved_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID               string     `json:"id"`
+	ReporterID       string     `json:"reporter_user_id"`
+	ReporterUsername *string    `json:"reporter_username,omitempty"`
+	ReporterEmail    *string    `json:"reporter_email,omitempty"`
+	ReporterPhotoURL *string    `json:"reporter_photo_url,omitempty"`
+	EntityType       string     `json:"entity_type"`
+	EntityID         string     `json:"entity_id"`
+	ReasonCode       string     `json:"reason_code"`
+	Description      string     `json:"description,omitempty"`
+	Status           string     `json:"status"`
+	Resolution       *string    `json:"resolution,omitempty"`
+	ResolvedAt       *time.Time `json:"resolved_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
 }
 
 func NewAdminReportDTO(r *domain.Report) AdminReportDTO {
 	return AdminReportDTO{
-		ID:          r.ID,
-		ReporterID:  r.ReporterUserID,
-		EntityType:  r.EntityType,
-		EntityID:    r.EntityID,
-		ReasonCode:  r.ReasonCode,
-		Description: r.Description,
-		Status:      r.Status,
-		Resolution:  r.Resolution,
-		ResolvedAt:  r.ResolvedAt,
-		CreatedAt:   r.CreatedAt,
+		ID:               r.ID,
+		ReporterID:       r.ReporterUserID,
+		ReporterUsername: r.ReporterUsername,
+		ReporterEmail:    r.ReporterEmail,
+		ReporterPhotoURL: r.ReporterPhotoURL,
+		EntityType:       r.EntityType,
+		EntityID:         r.EntityID,
+		ReasonCode:       r.ReasonCode,
+		Description:      r.Description,
+		Status:           r.Status,
+		Resolution:       r.Resolution,
+		ResolvedAt:       r.ResolvedAt,
+		CreatedAt:        r.CreatedAt,
 	}
 }
 

@@ -1,6 +1,10 @@
 package dto
 
-import "time"
+import (
+	"time"
+
+	"github.com/daggix02-m/event_nu/backend/internal/domain"
+)
 
 type RegisterRequest struct {
 	Email    string `json:"email"`
@@ -35,6 +39,36 @@ type UserDTO struct {
 	OnboardingCompleted bool `json:"onboarding_completed"`
 }
 
+// AdminUserDTO is the admin directory row: the self-view profile plus status
+// and no onboarding flag (irrelevant to an admin). Username/bio/photo_url are
+// editable by admins; email is read-only (email changes run the public
+// verification flow).
+type AdminUserDTO struct {
+	ID         string    `json:"id"`
+	Email      string    `json:"email"`
+	Username   string    `json:"username"`
+	Bio        string    `json:"bio"`
+	PhotoURL   string    `json:"photo_url"`
+	Role       string    `json:"role"`
+	IsVerified bool      `json:"is_verified"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+func NewAdminUserDTO(u *domain.User) AdminUserDTO {
+	return AdminUserDTO{
+		ID:         u.ID,
+		Email:      u.Email,
+		Username:   u.Username,
+		Bio:        u.Bio,
+		PhotoURL:   u.PhotoURL,
+		Role:       string(u.Role),
+		IsVerified: u.IsVerified,
+		Status:     u.Status,
+		CreatedAt:  u.CreatedAt,
+	}
+}
+
 type AuthResponse struct {
 	User         UserDTO `json:"user"`
 	AccessToken  string  `json:"access_token"`
@@ -49,4 +83,15 @@ type UpdateProfileRequest struct {
 	Username *string `json:"username"`
 	Bio      *string `json:"bio"`
 	PhotoURL *string `json:"photo_url"`
+}
+
+// UpdateAdminUserRequest is the console's user-directory edit. Nil fields are
+// left unchanged; role/status changes are subject to the self-modification
+// guard; email changes stay out of scope.
+type UpdateAdminUserRequest struct {
+	Username *string `json:"username"`
+	Bio      *string `json:"bio"`
+	PhotoURL *string `json:"photo_url"`
+	Role     *string `json:"role"`
+	Status   *string `json:"status"`
 }

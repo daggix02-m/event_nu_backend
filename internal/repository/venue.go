@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/daggix02-m/event_nu/backend/internal/domain"
 	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
@@ -96,6 +97,63 @@ func (r *VenueRepository) CountActive(ctx context.Context) (int, error) {
 		WHERE status = 'active' AND deleted_at IS NULL`).Scan(&total)
 	if err != nil {
 		return 0, fmt.Errorf("count venues: %w", err)
+	}
+	return total, nil
+}
+
+// adminVenueClause builds the admin venue-list WHERE clause. q matches name,
+// address or city (case-insensitive substring); status is a validated
+// venue_status at the service boundary.
+func adminVenueClause(q, status string) (string, []any) {
+	conds := []string{"deleted_at IS NULL"}
+	args := []any{}
+	if status != "" {
+		args = append(args, status)
+		conds = append(conds, fmt.Sprintf("status = $%d", len(args)))
+	}
+	if trimmed := strings.TrimSpace(q); trimmed != "" {
+		args = append(args, escapeLikePattern(trimmed))
+		conds = append(conds, fmt.Sprintf("(name ILIKE '%%' || $%d || '%%' OR address ILIKE '%%' || $%d || '%%' OR city ILIKE '%%' || $%d || '%%')", len(args), len(args), len(args)))
+	}
+	return strings.Join(conds, " AND "), args
+}
+
+// ListAdmin returns venues matching the optional q/status filters, newest
+// first. Unlike ListActive there is no active-only restriction; the admin sees
+// suspended venues too.
+func (r *VenueRepository) ListAdmin(ctx context.Context, q, status string, limit, offset int) ([]*domain.Venue, error) {
+	where, args := adminVenueClause(q, status)
+	rows, err := r.q(ctx).Query(ctx, `
+		SELECT `+venueColumns+`
+		FROM venues
+		WHERE `+where+`
+		ORDER BY created_at DESC, id
+		LIMIT $`+numArg(len(args)+1)+` OFFSET $`+numArg(len(args)+2),
+		append(args, limit, offset)...)
+	if err != nil {
+		return nil, fmt.Errorf("admin list venues: %w", err)
+	}
+	defer rows.Close()
+
+	var venues []*domain.Venue
+	for rows.Next() {
+		v, err := scanVenue(rows)
+		if err != nil {
+			return nil, err
+		}
+		venues = append(venues, v)
+	}
+	return venues, rows.Err()
+}
+
+// CountAdmin counts venues matching the optional admin filters.
+func (r *VenueRepository) CountAdmin(ctx context.Context, q, status string) (int, error) {
+	where, args := adminVenueClause(q, status)
+	var total int
+	err := r.q(ctx).QueryRow(ctx, `
+		SELECT count(*) FROM venues WHERE `+where, args...).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("admin count venues: %w", err)
 	}
 	return total, nil
 }

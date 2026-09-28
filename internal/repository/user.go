@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/daggix02-m/event_nu/backend/internal/domain"
 	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
@@ -127,5 +128,106 @@ func (r *UserRepository) CompleteOnboarding(ctx context.Context, id string) (*do
 		    updated_at = now()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING `+userColumns, id)
+	return scanUser(row)
+}
+
+// adminUserClause builds the admin user-directory WHERE clause. q matches
+// email or username (case-insensitive substring, LIKE wildcards escaped); role
+// and status are validated enums at the service boundary.
+func adminUserClause(q, role, status string) (string, []any) {
+	conds := []string{"deleted_at IS NULL"}
+	args := []any{}
+	if role != "" {
+		args = append(args, role)
+		conds = append(conds, fmt.Sprintf("role = $%d", len(args)))
+	}
+	if status != "" {
+		args = append(args, status)
+		conds = append(conds, fmt.Sprintf("status = $%d", len(args)))
+	}
+	if trimmed := strings.TrimSpace(q); trimmed != "" {
+		args = append(args, escapeLikePattern(trimmed))
+		conds = append(conds, fmt.Sprintf("(email ILIKE '%%' || $%d || '%%' OR username ILIKE '%%' || $%d || '%%')", len(args), len(args)))
+	}
+	return strings.Join(conds, " AND "), args
+}
+
+// ListAdmin returns users matching the optional q/role/status filters, newest
+// first. Runs under the admin RLS role, so every visible row (any role or
+// status) is returned.
+func (r *UserRepository) ListAdmin(ctx context.Context, q, role, status string, limit, offset int) ([]*domain.User, error) {
+	where, args := adminUserClause(q, role, status)
+	rows, err := r.q(ctx).Query(ctx, `
+		SELECT `+userColumns+`
+		FROM users
+		WHERE `+where+`
+		ORDER BY created_at DESC, id
+		LIMIT $`+numArg(len(args)+1)+` OFFSET $`+numArg(len(args)+2),
+		append(args, limit, offset)...)
+	if err != nil {
+		return nil, fmt.Errorf("admin list users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*domain.User
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// CountAdmin counts users matching the optional admin directory filters.
+func (r *UserRepository) CountAdmin(ctx context.Context, q, role, status string) (int, error) {
+	where, args := adminUserClause(q, role, status)
+	var total int
+	err := r.q(ctx).QueryRow(ctx, `
+		SELECT count(*) FROM users WHERE `+where, args...).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("admin count users: %w", err)
+	}
+	return total, nil
+}
+
+// UpdateAdmin partially updates a user's directory fields from the console.
+// Nil fields keep their existing value (COALESCE). role/status must be
+// validated before this query: the explicit enum casts make an invalid value a
+// clean postgres error rather than a silent no-op. The username conflict is
+// surfaced as a 409 username_taken.
+func (r *UserRepository) UpdateAdmin(ctx context.Context, id string, username, bio, photoURL, role, status *string) (*domain.User, error) {
+	row := r.q(ctx).QueryRow(ctx, `
+		UPDATE users
+		SET username  = COALESCE($2, username),
+		    bio       = COALESCE($3, bio),
+		    photo_url = COALESCE($4, photo_url),
+		    role      = COALESCE($5::user_role, role),
+		    status    = COALESCE($6::user_status, status),
+		    updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING `+userColumns, id, username, bio, photoURL, role, status)
+
+	user, err := scanUser(row)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_username_key" {
+			return nil, shared.WrapAppError(err, "username_taken", "This username is already taken.", 409)
+		}
+		return nil, err
+	}
+	return user, nil
+}
+
+// SetStatus flips a user's lifecycle status (active/suspended/deactivated).
+// Idempotent: setting the current status is a no-op UPDATE that still returns
+// the row.
+func (r *UserRepository) SetStatus(ctx context.Context, id, status string) (*domain.User, error) {
+	row := r.q(ctx).QueryRow(ctx, `
+		UPDATE users
+		SET status = $2::user_status, updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING `+userColumns, id, status)
 	return scanUser(row)
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -80,7 +81,54 @@ func (h *AnalyticsHandlers) Usage(w http.ResponseWriter, r *http.Request) {
 		resp.TotalEvents += u.EventCount
 		resp.TotalUniqueUser += u.UniqueUsers
 	}
-	shared.WriteJSON(w, http.StatusOK, resp)
+	writeJSONBare(w, http.StatusOK, resp)
+}
+
+// DailyMetrics returns the per-day rollup rows the console overview needs. It
+// mirrors the Usage response shape (a day series plus window totals) so the
+// dashboard can render both the sparkline trend and the summary cards from one
+// payload; deltas are computed client-side from consecutive rows.
+func (h *AnalyticsHandlers) DailyMetrics(w http.ResponseWriter, r *http.Request) {
+	days, err := strconv.Atoi(r.URL.Query().Get("days"))
+	if err != nil || r.URL.Query().Get("days") == "" {
+		days = 14
+	}
+
+	series, totals, err := h.analytics.DailyMetrics(r.Context(), days)
+	if err != nil {
+		h.app.AppError(w, r, err)
+		return
+	}
+
+	resp := dto.DailyMetricsResponse{
+		Window:   make([]dto.DailyMetricDayDTO, 0, len(series.Window)),
+		Previous: make([]dto.DailyMetricDayDTO, 0, len(series.Previous)),
+	}
+	for _, m := range series.Window {
+		resp.Window = append(resp.Window, dto.DailyMetricDayDTO{
+			Day:               m.Day.Format("2006-01-02"),
+			EventsPublished:   m.EventsPublished,
+			EventsCreated:     m.EventsCreated,
+			UsersRegistered:   m.UsersRegistered,
+			OrganizersCreated: m.OrganizersCreated,
+		})
+	}
+	for _, m := range series.Previous {
+		resp.Previous = append(resp.Previous, dto.DailyMetricDayDTO{
+			Day:               m.Day.Format("2006-01-02"),
+			EventsPublished:   m.EventsPublished,
+			EventsCreated:     m.EventsCreated,
+			UsersRegistered:   m.UsersRegistered,
+			OrganizersCreated: m.OrganizersCreated,
+		})
+	}
+	resp.Totals = dto.WindowTotalsDTO{
+		EventsPublished:   totals.EventsPublished,
+		EventsCreated:     totals.EventsCreated,
+		UsersRegistered:   totals.UsersRegistered,
+		OrganizersCreated: totals.OrganizersCreated,
+	}
+	writeJSONBare(w, http.StatusOK, resp)
 }
 
 // FunnelEventCreation aggregates the event-creation funnel over a date range.
@@ -116,7 +164,17 @@ func (h *AnalyticsHandlers) funnel(w http.ResponseWriter, r *http.Request, steps
 			UniqueUsers: s.UniqueUsers,
 		})
 	}
-	shared.WriteJSON(w, http.StatusOK, out)
+	writeJSONBare(w, http.StatusOK, out)
+}
+
+// writeJSONBare writes v directly without the shared {"data": ...} envelope,
+// matching the bare-write convention the events-list handler uses. The admin
+// console's analytics pages (usage + funnels) consume the payload at the top
+// level through the BFF passthrough, so the writing side must not wrap it.
+func writeJSONBare(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 // parseRange reads the from/to query params as UTC dates (YYYY-MM-DD). A

@@ -14,7 +14,12 @@ type stubAnalyticsStore struct {
 	insertedUser string
 	inserted     []domain.AnalyticsEvent
 	usage        []domain.DailyUsage
+	dailyMetrics []domain.DailyMetricRow
 	funnel       []domain.FunnelStep
+}
+
+func (s *stubAnalyticsStore) DailyMetrics(_ context.Context, _ int) ([]domain.DailyMetricRow, error) {
+	return s.dailyMetrics, nil
 }
 
 func (s *stubAnalyticsStore) InsertBatch(_ context.Context, userID string, events []domain.AnalyticsEvent) (int, error) {
