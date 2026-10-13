@@ -2,9 +2,9 @@ package domain
 
 import "time"
 
-// Fixed analytics event vocabulary (Phase 33). The authoritative copy is
-// docs/ANALYTICS_EVENTS.md; server and client both mirror THIS set. Unknown
-// names are rejected at ingest, never silently dropped.
+// Fixed analytics event vocabulary. The full catalog is maintained internally;
+// server and client both mirror THIS set. Unknown names are rejected at
+// ingest, never silently dropped.
 const (
 	EventScreenViewed            = "screen_view"
 	EventEventListViewed         = "event_list_viewed"

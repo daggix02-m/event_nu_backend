@@ -56,7 +56,7 @@ db-down:
 	docker compose -f ../docker-compose.yml down
 
 ci:
-	# Local equivalent of the CI gate (phase-01): same commands the workflow
+	# Local equivalent of the CI gate: same commands the workflow
 	# runs, against a local Postgres instead of the CI service container.
 	# Bootstrapping app_user + running migrations is documented in README.md.
 	@test -n "$$DATABASE_URL" || (echo "DATABASE_URL is required (point at a local/CI Postgres)" && exit 1)

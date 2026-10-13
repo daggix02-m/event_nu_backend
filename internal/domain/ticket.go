@@ -54,7 +54,7 @@ type Ticket struct {
 
 // TicketQRPayload is exactly what the check-in device scans: the three
 // identifying fields plus an HMAC-SHA256 over their canonical concatenation.
-// The full protocol is documented in docs/ticket-qr-protocol.md.
+// The full protocol spec is maintained internally by the maintainers.
 type TicketQRPayload struct {
 	TicketID string `json:"ticket_id"`
 	EventID  string `json:"event_id"`
