@@ -1,0 +1,37 @@
+# Local CI-equivalent database. Mirrors the Postgres 16 service in
+# .github/workflows/ci.yml so `make db-up && make ci` runs the exact gates CI
+# enforces, against a fast local Postgres instead of the shared dev DB.
+#
+# No named volume: `make db-down && make db-up` always starts from a clean
+# database, matching CI. Host port 55432 avoids clashing with any Postgres
+# already on 5432, and binds to localhost only.
+services:
+  postgres:
+    image: postgres:16
+    container_name: event_nu_ci_pg
+    ports:
+      - "127.0.0.1:55432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: event_nu_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # S3-compatible object storage for the media pipeline. The backend's default
+  # MEDIA_STORAGE_PROVIDER is "local"; set it to "s3" together with the
+  # MEDIA_S3_* variables to exercise the real S3 code path against this
+  # service (not part of the automated gate — the gate always uses "local").
+  minio:
+    image: minio/minio:RELEASE.2024-06-13T22-53-53Z
+    container_name: event_nu_ci_minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin

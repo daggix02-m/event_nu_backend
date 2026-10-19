@@ -100,8 +100,7 @@ make ci
 
 ## Configuration
 
-`.env` lives at the repo root (`/home/daggi/Projects/event_nu_mobile/.env`),
-above the `backend/` git root. See `.env.example` for the template.
+`.env` lives at the repo root. See `.env.example` for the template.
 
 | Variable | Purpose |
 |---|---|

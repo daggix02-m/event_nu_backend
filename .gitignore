@@ -1,0 +1,32 @@
+# Secrets / environment — never commit
+.env
+.env.*
+!.env.example
+
+# Key material / service accounts — never commit
+*.pem
+*.p8
+*.p12
+*.pfx
+*.key
+service-account*.json
+*-credentials.json
+
+# Go
+/bin/
+/coverage.out
+/api
+
+# IDE
+.idea/
+
+# Agent runtime dirs — local only, may carry scratch/internal content
+.claude/
+.opencode/
+.kilo/
+
+# OS
+.DS_Store
+
+# Local media storage (dev/tests)
+/media-store/

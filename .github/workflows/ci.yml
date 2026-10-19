@@ -1,0 +1,91 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: event_nu_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/event_nu_test?sslmode=disable
+      DATABASE_URL: postgres://app_user:app_user_pass@localhost:5432/event_nu_test?sslmode=disable
+      JWT_SECRET: ci-only-test-secret-never-used-in-production
+      EMAIL_PROVIDER: noop
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      # libwebp headers are required to CGO-compile the WebP encoder used by
+      # the media variant worker (internal/infrastructure/imaging).
+      - name: Install libwebp
+        run: sudo apt-get update && sudo apt-get install -y libwebp-dev
+
+      - name: Install goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.27.3
+
+      - name: Bootstrap app_user (non-superuser role under RLS)
+        run: |
+          psql "$DATABASE_ADMIN_URL" <<'SQL'
+          CREATE ROLE app_user LOGIN PASSWORD 'app_user_pass';
+          GRANT CONNECT ON DATABASE event_nu_test TO app_user;
+          GRANT USAGE ON SCHEMA public TO app_user;
+          -- Migrations create tables as the postgres (superuser) migration role;
+          -- default privileges hand app_user row-level access automatically so
+          -- the RLS tests run as a non-superuser (a superuser bypasses RLS and
+          -- the cross-user-block proofs would fail).
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO app_user;
+          SQL
+
+      - name: Migrations
+        working-directory: migrations
+        run: goose postgres "$DATABASE_ADMIN_URL" up
+
+      - name: gofmt
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "Files needing gofmt:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: vet
+        run: go vet ./...
+
+      - name: build
+        run: go build ./...
+
+      - name: lint
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...
+
+      - name: test
+        # -timeout 30m matches the make ci gate: -p 1 runs the DB-backed
+        # handlers suite serially, and a long-lived dev DB can grow past the
+        # default 10m ceiling (see Makefile). CI's fresh Postgres is fast; the
+        # ceiling only guards the shared-dev-DB case.
+        run: go test -race -p 1 -count=1 -timeout 30m ./...

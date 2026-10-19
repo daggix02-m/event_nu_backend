@@ -46,14 +46,14 @@ migrate-new:
 db-up:
 	# CI-equivalent Postgres 16: up, wait for readiness, create the RLS
 	# app_user role + default privileges, then apply migrations.
-	docker compose -f ../docker-compose.yml up -d
+	docker compose up -d
 	@echo "waiting for Postgres..."
 	@until docker exec event_nu_ci_pg pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
 	psql "$$DATABASE_ADMIN_URL" -f scripts/bootstrap_app_user.sql
 	cd migrations && goose postgres "$$DATABASE_ADMIN_URL" up
 
 db-down:
-	docker compose -f ../docker-compose.yml down
+	docker compose down
 
 ci:
 	# Local equivalent of the CI gate: same commands the workflow
