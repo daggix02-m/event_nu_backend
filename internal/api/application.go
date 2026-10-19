@@ -3,13 +3,13 @@ package api
 import (
 	"log/slog"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api/metrics"
-	"github.com/daggix02-m/event_nu/backend/internal/api/middleware"
-	"github.com/daggix02-m/event_nu/backend/internal/config"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/payments"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/storage"
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
-	"github.com/daggix02-m/event_nu/backend/internal/service"
+	"github.com/daggix02-m/event_nu_backend/internal/api/metrics"
+	"github.com/daggix02-m/event_nu_backend/internal/api/middleware"
+	"github.com/daggix02-m/event_nu_backend/internal/config"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/payments"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/storage"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
 )
 
 // TestBadgeMilestoneGuardAndExactlyOnce: award_badge() only awards when the

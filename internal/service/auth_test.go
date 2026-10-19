@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/config"
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/shared"
+	"github.com/daggix02-m/event_nu_backend/internal/config"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
 func testConfig() config.Config {

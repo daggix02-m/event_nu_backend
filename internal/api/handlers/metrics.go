@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api"
-	"github.com/daggix02-m/event_nu/backend/internal/api/metrics"
+	"github.com/daggix02-m/event_nu_backend/internal/api"
+	"github.com/daggix02-m/event_nu_backend/internal/api/metrics"
 )
 
 // Metrics exposes the process/request counters in Prometheus text format. It is

@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api/middleware"
-	"github.com/daggix02-m/event_nu/backend/internal/shared"
+	"github.com/daggix02-m/event_nu_backend/internal/api/middleware"
+	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
 // ServerError logs the underlying error and returns a generic 500 — internal

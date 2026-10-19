@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api/metrics"
+	"github.com/daggix02-m/event_nu_backend/internal/api/metrics"
 )
 
 func TestRegistryCountsByMethodAndStatus(t *testing.T) {

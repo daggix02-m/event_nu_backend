@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api/dto"
+	"github.com/daggix02-m/event_nu_backend/internal/api/dto"
 )
 
 func TestMyOrganizerAndMyEvents(t *testing.T) {

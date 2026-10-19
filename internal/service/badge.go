@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
 )
 
 // badgeStore is the badge-repository surface BadgeService needs.

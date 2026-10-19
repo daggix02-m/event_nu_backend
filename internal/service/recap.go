@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
 )
 
 // recapStore is the recap-repository surface RecapService needs.

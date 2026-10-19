@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

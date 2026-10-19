@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
 )
 
 // queryOrganizerID resolves an organizer id from a stable name via the trusted

@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/config"
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/email"
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/config"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/email"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
 )
 
 // emailOutboxStore is the persistence surface the email consumer needs. It is

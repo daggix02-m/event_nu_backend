@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
 )
 
 // Sync domains served by GET /api/v1/sync. This is the public-discovery

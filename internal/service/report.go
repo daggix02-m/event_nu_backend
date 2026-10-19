@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/shared"
-	"github.com/daggix02-m/event_nu/backend/internal/validator"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/shared"
+	"github.com/daggix02-m/event_nu_backend/internal/validator"
 )
 
 // reportStore records the report row and applies the under_review moderation

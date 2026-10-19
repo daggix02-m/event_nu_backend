@@ -3,12 +3,12 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api"
-	"github.com/daggix02-m/event_nu/backend/internal/api/dto"
-	"github.com/daggix02-m/event_nu/backend/internal/api/middleware"
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/service"
-	"github.com/daggix02-m/event_nu/backend/internal/shared"
+	"github.com/daggix02-m/event_nu_backend/internal/api"
+	"github.com/daggix02-m/event_nu_backend/internal/api/dto"
+	"github.com/daggix02-m/event_nu_backend/internal/api/middleware"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/service"
+	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
 type OrganizerHandlers struct {

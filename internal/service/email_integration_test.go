@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/config"
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/config"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )

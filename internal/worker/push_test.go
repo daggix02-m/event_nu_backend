@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/config"
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/push"
+	"github.com/daggix02-m/event_nu_backend/internal/config"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/push"
 )
 
 // fakePushSender records every delivery and can fail per token. It satisfies

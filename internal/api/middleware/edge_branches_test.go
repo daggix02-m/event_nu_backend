@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
 )
 
 // failingIdemStore returns an error from a configurable set of methods, used to

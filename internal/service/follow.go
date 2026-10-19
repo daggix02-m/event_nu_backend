@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/shared"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
 // followStore is the follow-repository surface FollowService needs.

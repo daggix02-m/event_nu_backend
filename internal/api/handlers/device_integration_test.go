@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api/dto"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
+	"github.com/daggix02-m/event_nu_backend/internal/api/dto"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
 )
 
 func cleanupDevices(t *testing.T, userIDs ...string) {

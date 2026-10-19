@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api"
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
-	"github.com/daggix02-m/event_nu/backend/internal/service"
+	"github.com/daggix02-m/event_nu_backend/internal/api"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/service"
 )
 
 // ---- wire shapes --------------------------------------------------------------

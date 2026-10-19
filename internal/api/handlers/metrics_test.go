@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api"
-	"github.com/daggix02-m/event_nu/backend/internal/api/handlers"
-	"github.com/daggix02-m/event_nu/backend/internal/api/metrics"
+	"github.com/daggix02-m/event_nu_backend/internal/api"
+	"github.com/daggix02-m/event_nu_backend/internal/api/handlers"
+	"github.com/daggix02-m/event_nu_backend/internal/api/metrics"
 )
 
 // TestMetricsHandlerExposesPrometheusText checks the /metrics handler without a

@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api/dto"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/storage"
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
-	"github.com/daggix02-m/event_nu/backend/internal/service"
-	"github.com/daggix02-m/event_nu/backend/internal/worker"
+	"github.com/daggix02-m/event_nu_backend/internal/api/dto"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/storage"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/service"
+	"github.com/daggix02-m/event_nu_backend/internal/worker"
 )
 
 func tinyPNG(t *testing.T) []byte {

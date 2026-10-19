@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
 )
 
 type tokenResponse struct {

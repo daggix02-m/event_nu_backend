@@ -4,8 +4,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api"
-	"github.com/daggix02-m/event_nu/backend/internal/service"
+	"github.com/daggix02-m/event_nu_backend/internal/api"
+	"github.com/daggix02-m/event_nu_backend/internal/service"
 )
 
 // PaymentHandlers expose the provider callback webhook. It runs under the

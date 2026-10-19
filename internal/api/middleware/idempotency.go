@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
 )
 
 // idempotencyTTL bounds how long a stored key is honored. It also acts as a

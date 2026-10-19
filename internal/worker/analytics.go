@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/config"
+	"github.com/daggix02-m/event_nu_backend/internal/config"
 )
 
 // analyticsRollupStore is the persistence surface the rollup consumer needs

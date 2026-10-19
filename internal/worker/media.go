@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/config"
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/imaging"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/storage"
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
-	"github.com/daggix02-m/event_nu/backend/internal/service"
+	"github.com/daggix02-m/event_nu_backend/internal/config"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/imaging"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/storage"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/service"
 )
 
 // mediaJobStore is the persistence surface the media consumer needs (mirrors

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/repository"
-	"github.com/daggix02-m/event_nu/backend/internal/shared"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
 // fakeIdemStore is an in-memory stand-in for the idempotency repository,

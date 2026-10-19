@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/daggix02-m/event_nu/backend/internal/domain"
-	"github.com/daggix02-m/event_nu/backend/internal/shared"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
+	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
 // rsvpStore is the rsvp-repository surface RsvpService needs.

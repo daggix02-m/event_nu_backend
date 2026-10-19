@@ -1,4 +1,4 @@
-module github.com/daggix02-m/event_nu/backend
+module github.com/daggix02-m/event_nu_backend
 
 go 1.26.6
 

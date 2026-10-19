@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/database"
-	"github.com/daggix02-m/event_nu/backend/internal/shared"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
+	"github.com/daggix02-m/event_nu_backend/internal/shared"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/daggix02-m/event_nu/backend/internal/api"
-	"github.com/daggix02-m/event_nu/backend/internal/api/handlers"
-	"github.com/daggix02-m/event_nu/backend/internal/api/metrics"
-	"github.com/daggix02-m/event_nu/backend/internal/api/middleware"
-	"github.com/daggix02-m/event_nu/backend/internal/infrastructure/storage"
+	"github.com/daggix02-m/event_nu_backend/internal/api"
+	"github.com/daggix02-m/event_nu_backend/internal/api/handlers"
+	"github.com/daggix02-m/event_nu_backend/internal/api/metrics"
+	"github.com/daggix02-m/event_nu_backend/internal/api/middleware"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/storage"
 )
 
 // New builds the route table and wraps it in the middleware chain.
