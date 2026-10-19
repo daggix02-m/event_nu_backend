@@ -28,5 +28,5 @@ service-account*.json
 # OS
 .DS_Store
 
-# Local media storage (dev/tests)
-/media-store/
+# Local media storage (dev/tests) — may be created at any depth
+media-store/
