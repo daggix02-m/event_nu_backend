@@ -28,6 +28,11 @@ service EventService {
   // endpoint accepts (query, category). Geo filters arrive with the mobile
   // map feature if gRPC needs them.
   rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+
+  // ListMyEvents serves the caller's organizer events across all lifecycle
+  // statuses (drafts included) — the only EventService method that requires
+  // an identity; anonymous calls map to UNAUTHENTICATED.
+  rpc ListMyEvents(ListMyEventsRequest) returns (ListMyEventsResponse);
 }
 
 message GetEventRequest {
@@ -77,6 +82,20 @@ message ListEventsRequest {
 }
 
 message ListEventsResponse {
+  repeated Event events = 1;
+  int64 total = 2;
+}
+
+message ListMyEventsRequest {
+  // status filters by lifecycle ("draft", "published", ...; "" = all).
+  // The value passes through to the repository like the REST query param —
+  // an unknown value simply matches nothing.
+  string status = 1;
+  uint32 page = 2;
+  uint32 limit = 3;
+}
+
+message ListMyEventsResponse {
   repeated Event events = 1;
   int64 total = 2;
 }

@@ -411,6 +411,121 @@ func (x *ListEventsResponse) GetTotal() int64 {
 	return 0
 }
 
+type ListMyEventsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// status filters by lifecycle ("draft", "published", ...; "" = all).
+	// The value passes through to the repository like the REST query param —
+	// an unknown value simply matches nothing.
+	Status        string `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	Page          uint32 `protobuf:"varint,2,opt,name=page,proto3" json:"page,omitempty"`
+	Limit         uint32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMyEventsRequest) Reset() {
+	*x = ListMyEventsRequest{}
+	mi := &file_proto_eventnu_v1_events_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMyEventsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMyEventsRequest) ProtoMessage() {}
+
+func (x *ListMyEventsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_eventnu_v1_events_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMyEventsRequest.ProtoReflect.Descriptor instead.
+func (*ListMyEventsRequest) Descriptor() ([]byte, []int) {
+	return file_proto_eventnu_v1_events_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListMyEventsRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListMyEventsRequest) GetPage() uint32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListMyEventsRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListMyEventsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Events        []*Event               `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	Total         int64                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMyEventsResponse) Reset() {
+	*x = ListMyEventsResponse{}
+	mi := &file_proto_eventnu_v1_events_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMyEventsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMyEventsResponse) ProtoMessage() {}
+
+func (x *ListMyEventsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_eventnu_v1_events_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMyEventsResponse.ProtoReflect.Descriptor instead.
+func (*ListMyEventsResponse) Descriptor() ([]byte, []int) {
+	return file_proto_eventnu_v1_events_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListMyEventsResponse) GetEvents() []*Event {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+func (x *ListMyEventsResponse) GetTotal() int64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
 var File_proto_eventnu_v1_events_proto protoreflect.FileDescriptor
 
 const file_proto_eventnu_v1_events_proto_rawDesc = "" +
@@ -462,11 +577,19 @@ const file_proto_eventnu_v1_events_proto_rawDesc = "" +
 	"\x05limit\x18\x04 \x01(\rR\x05limit\"U\n" +
 	"\x12ListEventsResponse\x12)\n" +
 	"\x06events\x18\x01 \x03(\v2\x11.eventnu.v1.EventR\x06events\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x03R\x05total2\x97\x01\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\"W\n" +
+	"\x13ListMyEventsRequest\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12\x12\n" +
+	"\x04page\x18\x02 \x01(\rR\x04page\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\rR\x05limit\"W\n" +
+	"\x14ListMyEventsResponse\x12)\n" +
+	"\x06events\x18\x01 \x03(\v2\x11.eventnu.v1.EventR\x06events\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total2\xea\x01\n" +
 	"\fEventService\x12:\n" +
 	"\bGetEvent\x12\x1b.eventnu.v1.GetEventRequest\x1a\x11.eventnu.v1.Event\x12K\n" +
 	"\n" +
-	"ListEvents\x12\x1d.eventnu.v1.ListEventsRequest\x1a\x1e.eventnu.v1.ListEventsResponseBTZRgithub.com/daggix02-m/event_nu_backend/internal/transport/grpc/eventnupb;eventnupbb\x06proto3"
+	"ListEvents\x12\x1d.eventnu.v1.ListEventsRequest\x1a\x1e.eventnu.v1.ListEventsResponse\x12Q\n" +
+	"\fListMyEvents\x12\x1f.eventnu.v1.ListMyEventsRequest\x1a .eventnu.v1.ListMyEventsResponseBTZRgithub.com/daggix02-m/event_nu_backend/internal/transport/grpc/eventnupb;eventnupbb\x06proto3"
 
 var (
 	file_proto_eventnu_v1_events_proto_rawDescOnce sync.Once
@@ -480,28 +603,33 @@ func file_proto_eventnu_v1_events_proto_rawDescGZIP() []byte {
 	return file_proto_eventnu_v1_events_proto_rawDescData
 }
 
-var file_proto_eventnu_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_proto_eventnu_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_proto_eventnu_v1_events_proto_goTypes = []any{
 	(*GetEventRequest)(nil),       // 0: eventnu.v1.GetEventRequest
 	(*Event)(nil),                 // 1: eventnu.v1.Event
 	(*ListEventsRequest)(nil),     // 2: eventnu.v1.ListEventsRequest
 	(*ListEventsResponse)(nil),    // 3: eventnu.v1.ListEventsResponse
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(*ListMyEventsRequest)(nil),   // 4: eventnu.v1.ListMyEventsRequest
+	(*ListMyEventsResponse)(nil),  // 5: eventnu.v1.ListMyEventsResponse
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_proto_eventnu_v1_events_proto_depIdxs = []int32{
-	4, // 0: eventnu.v1.Event.starts_at:type_name -> google.protobuf.Timestamp
-	4, // 1: eventnu.v1.Event.ends_at:type_name -> google.protobuf.Timestamp
-	4, // 2: eventnu.v1.Event.created_at:type_name -> google.protobuf.Timestamp
+	6, // 0: eventnu.v1.Event.starts_at:type_name -> google.protobuf.Timestamp
+	6, // 1: eventnu.v1.Event.ends_at:type_name -> google.protobuf.Timestamp
+	6, // 2: eventnu.v1.Event.created_at:type_name -> google.protobuf.Timestamp
 	1, // 3: eventnu.v1.ListEventsResponse.events:type_name -> eventnu.v1.Event
-	0, // 4: eventnu.v1.EventService.GetEvent:input_type -> eventnu.v1.GetEventRequest
-	2, // 5: eventnu.v1.EventService.ListEvents:input_type -> eventnu.v1.ListEventsRequest
-	1, // 6: eventnu.v1.EventService.GetEvent:output_type -> eventnu.v1.Event
-	3, // 7: eventnu.v1.EventService.ListEvents:output_type -> eventnu.v1.ListEventsResponse
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	1, // 4: eventnu.v1.ListMyEventsResponse.events:type_name -> eventnu.v1.Event
+	0, // 5: eventnu.v1.EventService.GetEvent:input_type -> eventnu.v1.GetEventRequest
+	2, // 6: eventnu.v1.EventService.ListEvents:input_type -> eventnu.v1.ListEventsRequest
+	4, // 7: eventnu.v1.EventService.ListMyEvents:input_type -> eventnu.v1.ListMyEventsRequest
+	1, // 8: eventnu.v1.EventService.GetEvent:output_type -> eventnu.v1.Event
+	3, // 9: eventnu.v1.EventService.ListEvents:output_type -> eventnu.v1.ListEventsResponse
+	5, // 10: eventnu.v1.EventService.ListMyEvents:output_type -> eventnu.v1.ListMyEventsResponse
+	8, // [8:11] is the sub-list for method output_type
+	5, // [5:8] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_proto_eventnu_v1_events_proto_init() }
@@ -516,7 +644,7 @@ func file_proto_eventnu_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_eventnu_v1_events_proto_rawDesc), len(file_proto_eventnu_v1_events_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

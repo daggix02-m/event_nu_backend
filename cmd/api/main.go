@@ -19,6 +19,7 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/transport/grpc/eventnupb"
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
+	eventgrpcreflection "google.golang.org/grpc/reflection"
 )
 
 func main() {
@@ -70,11 +71,16 @@ func main() {
 		grpcSrv = grpc.NewServer(
 			grpc.ChainUnaryInterceptor(
 				transportgrpc.RecoveryInterceptor(logger),
-				transportgrpc.OptionalAuthInterceptor(app.Auth),
 				transportgrpc.LoggingInterceptor(logger),
+				// Identity resolves BEFORE the transaction opens so the RLS
+				// context carries the caller's id — the mirrored order of
+				// REST's RequireAuth/OptionalAuth running inside BeginRequestTx.
+				transportgrpc.OptionalAuthInterceptor(app.Auth),
+				transportgrpc.TransactionInterceptor(app.DB, transportgrpc.RoleAlways("user"), app.Logger),
 			),
 		)
 		eventnupb.RegisterEventServiceServer(grpcSrv, transportgrpc.NewEventServer(app.Event, app.Media, app.Like, app.Save, app.Logger))
+		eventgrpcreflection.Register(grpcSrv)
 
 		lis, err := net.Listen("tcp", cfg.GRPCAddr)
 		if err != nil {

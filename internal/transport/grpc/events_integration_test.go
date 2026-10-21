@@ -58,8 +58,9 @@ func startGRPC(t *testing.T) (eventnupb.EventServiceClient, *api.Application) {
 	srv := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
 			RecoveryInterceptor(app.Logger),
-			OptionalAuthInterceptor(app.Auth),
 			LoggingInterceptor(app.Logger),
+			OptionalAuthInterceptor(app.Auth),
+			TransactionInterceptor(app.DB, RoleAlways("user"), app.Logger),
 		),
 	)
 	eventnupb.RegisterEventServiceServer(srv, NewEventServer(app.Event, app.Media, app.Like, app.Save, app.Logger))
@@ -135,7 +136,7 @@ func seedCatalog(t *testing.T, sock eventnupb.EventServiceClient) (organizerPref
 // because registration requires the REST request-transaction/RLS plumbing —
 // and that is precisely the client flow being tested: a token minted over
 // HTTP then consumed over gRPC.
-func seedUser(t *testing.T, app *api.Application, email, username string) string {
+func seedUser(t *testing.T, app *api.Application, email, username string) (token, userID string) {
 	t.Helper()
 	h := routes.New(app)
 	body := fmt.Sprintf(`{"email":%q,"password":"password123","username":%q}`, email, username)
@@ -148,13 +149,16 @@ func seedUser(t *testing.T, app *api.Application, email, username string) string
 	var resp struct {
 		Data struct {
 			AccessToken string `json:"access_token"`
+			User        struct {
+				ID string `json:"id"`
+			} `json:"user"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode register response: %v", err)
 	}
-	if resp.Data.AccessToken == "" {
-		t.Fatalf("register returned no access token: %s", rec.Body.String())
+	if resp.Data.AccessToken == "" || resp.Data.User.ID == "" {
+		t.Fatalf("register returned no token or user id: %s", rec.Body.String())
 	}
 	t.Cleanup(func() {
 		admin, err := database.NewPool(context.Background(), os.Getenv("DATABASE_ADMIN_URL"))
@@ -167,7 +171,7 @@ func seedUser(t *testing.T, app *api.Application, email, username string) string
 		_, _ = admin.Exec(cctx, `DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = $1)`, email)
 		_, _ = admin.Exec(cctx, `DELETE FROM users WHERE email = $1`, email)
 	})
-	return resp.Data.AccessToken
+	return resp.Data.AccessToken, resp.Data.User.ID
 }
 
 func authCtx(ctx context.Context, token string) context.Context {
@@ -246,7 +250,7 @@ func TestGetEventLikeEnrichment(t *testing.T) {
 	sock, app := startGRPC(t)
 	prefix, publishedID, _ := seedCatalog(t, sock)
 
-	token := seedUser(t, app, prefix+"-user@example.test", "grpcuser_"+strings.ReplaceAll(prefix, "-", "")[:11])
+	token, _ := seedUser(t, app, prefix+"-user@example.test", "grpcuser_"+strings.ReplaceAll(prefix, "-", "")[:11])
 
 	// Like the event through the REST door: the like write runs inside the
 	// REST request transaction/RLS context. This is precisely the client
@@ -286,6 +290,96 @@ func TestGetEventLikeEnrichment(t *testing.T) {
 	}
 	if bad.LikeCount != 1 || bad.LikedByMe {
 		t.Fatalf("invalid-token identity leaked: count=%d liked=%v", bad.LikeCount, bad.LikedByMe)
+	}
+}
+
+// TestListMyEventsProtected pins the protected-RPC contract: anonymous and
+// invalid-token callers get UNAUTHENTICATED before any query; a registered
+// user without an organizer gets an empty result; a seeded organizer sees
+// their draft and published events, filtered by status — the REST
+// /me/events parity.
+func TestListMyEventsProtected(t *testing.T) {
+	sock, app := startGRPC(t)
+	prefix, _, draftID := seedCatalog(t, sock)
+
+	// Anonymous: rejected before the service runs.
+	_, err := sock.ListMyEvents(context.Background(), &eventnupb.ListMyEventsRequest{Limit: 20})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("anonymous: got %v, want Unauthenticated", status.Code(err))
+	}
+
+	// Invalid token: protected methods reject unlikes OptionalAuth reads.
+	_, err = sock.ListMyEvents(authCtx(context.Background(), "not-a-real-token"), &eventnupb.ListMyEventsRequest{Limit: 20})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("invalid token: got %v, want Unauthenticated", status.Code(err))
+	}
+
+	// Registered user without an organizer: empty, not an error.
+	token, uid := seedUser(t, app, prefix+"-norg@example.test", "grpcnorg_"+strings.ReplaceAll(prefix, "-", "")[:11])
+	res, err := sock.ListMyEvents(authCtx(context.Background(), token), &eventnupb.ListMyEventsRequest{Limit: 20})
+	if err != nil {
+		t.Fatalf("no-organizer ListMyEvents: %v", err)
+	}
+	if res.Total != 0 || len(res.Events) != 0 {
+		t.Fatalf("no organizer: total %d events %d", res.Total, len(res.Events))
+	}
+
+	// Seed an organizer owned by that user (admin BYPASSRLS connection) with
+	// one more event + the catalog draft passed through seedCatalog.
+	admin, err := database.NewPool(context.Background(), os.Getenv("DATABASE_ADMIN_URL"))
+	if err != nil {
+		t.Fatalf("admin pool: %v", err)
+	}
+	defer admin.Close()
+	orgID := ""
+	if err := admin.QueryRow(context.Background(),
+		`INSERT INTO organizers (slug, name, bio, owner_user_id) VALUES ($1, $2, 'owned organizer fixture', $3) RETURNING id`,
+		prefix+"-mine", "My Organizer", uid).Scan(&orgID); err != nil {
+		t.Fatalf("insert owned organizer: %v", err)
+	}
+	t.Cleanup(func() {
+		cctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = admin.Exec(cctx, `DELETE FROM events WHERE organizer_id = $1`, orgID)
+		_, _ = admin.Exec(cctx, `DELETE FROM organizers WHERE id = $1`, orgID)
+	})
+	start := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	second := ""
+	if err := admin.QueryRow(context.Background(),
+		`INSERT INTO events (organizer_id, title, starts_at, price_is_free, status) VALUES ($1, $2, $3, true, 'published') RETURNING id`,
+		orgID, prefix+" second", start).Scan(&second); err != nil {
+		t.Fatalf("insert second event: %v", err)
+	}
+
+	// All lifecycle statuses visible to their owner (the seed draft belongs
+	// to the seedCatalog organizer — then attach it by re-pointing it here.
+	if _, err := admin.Exec(context.Background(), `UPDATE events SET organizer_id = $1 WHERE id = $2`, orgID, draftID); err != nil {
+		t.Fatalf("move draft: %v", err)
+	}
+
+	res, err = sock.ListMyEvents(authCtx(context.Background(), token), &eventnupb.ListMyEventsRequest{Limit: 20})
+	if err != nil {
+		t.Fatalf("organizer ListMyEvents: %v", err)
+	}
+	if res.Total != 2 || len(res.Events) != 2 {
+		t.Fatalf("organizer events: total %d events %d (want 2)", res.Total, len(res.Events))
+	}
+	sawDraft := false
+	for _, e := range res.Events {
+		if e.Id == draftID && e.Status == "draft" {
+			sawDraft = true
+		}
+	}
+	if !sawDraft {
+		t.Fatal("draft event missing from owner's list (lifecycle parity with REST)")
+	}
+
+	res, err = sock.ListMyEvents(authCtx(context.Background(), token), &eventnupb.ListMyEventsRequest{Status: "published", Limit: 20})
+	if err != nil {
+		t.Fatalf("filtered ListMyEvents: %v", err)
+	}
+	if res.Total != 1 || res.Events[0].Id != second {
+		t.Fatalf("status=published: total %d events %d (want the one published)", res.Total, len(res.Events))
 	}
 }
 

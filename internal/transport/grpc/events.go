@@ -119,6 +119,42 @@ func (s *EventServer) ListEvents(ctx context.Context, req *eventnupb.ListEventsR
 	}, nil
 }
 
+// ListMyEvents serves the caller's organizer events. This is the protected
+// method of the proto contract: REST's RequireAuth middleware rejects
+// anything without a resolvable identity (missing or invalid token — no
+// OptionalAuth fallback here), so the gRPC surface meets the same bar with
+// UNAUTHENTICATED before any query runs.
+func (s *EventServer) ListMyEvents(ctx context.Context, req *eventnupb.ListMyEventsRequest) (*eventnupb.ListMyEventsResponse, error) {
+	userID := UserID(ctx)
+	if userID == "" {
+		return nil, status.Error(codes.Unauthenticated, "authentication required")
+	}
+	page := int(req.GetPage())
+	limit := int(req.GetLimit())
+	if page < 1 {
+		page = 1
+	}
+	if limit == 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		return nil, status.Error(codes.InvalidArgument, "limit must be at most 100")
+	}
+
+	result, err := s.event.ListMyEvents(ctx, userID, req.GetStatus(), page, limit)
+	if err != nil {
+		return nil, toStatus(err)
+	}
+	out := make([]*eventnupb.Event, 0, len(result.Items))
+	for _, e := range result.Items {
+		out = append(out, s.toEventDTO(ctx, e))
+	}
+	return &eventnupb.ListMyEventsResponse{
+		Events: out,
+		Total:  int64(result.Total),
+	}, nil
+}
+
 // toEventDTO maps a domain event to the wire message. Media resolution is a
 // soft-fail: an unavailable media service degrades to empty URLs instead of
 // failing the read (same posture as the REST enrichment).
