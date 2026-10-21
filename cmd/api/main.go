@@ -15,7 +15,7 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/api/routes"
 	"github.com/daggix02-m/event_nu_backend/internal/config"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
-	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/kafka"
+	"github.com/daggix02-m/event_nu_backend/internal/repository"
 	"github.com/daggix02-m/event_nu_backend/internal/transport/grpc"
 	"github.com/daggix02-m/event_nu_backend/internal/transport/grpc/eventnupb"
 	"github.com/joho/godotenv"
@@ -48,18 +48,11 @@ func main() {
 	app := api.NewApp(logger, cfg, pool)
 	defer app.RateLimiter.Stop()
 
-	// Domain-event publisher: opt-in via KAFKA_BROKERS, exactly like the
-	// gRPC transport via GRPC_ADDR. Unset keeps the deployment unchanged.
-	if len(cfg.KafkaBrokers) > 0 {
-		producer := kafka.NewProducer(kafka.ProducerConfig{
-			Brokers:         cfg.KafkaBrokers,
-			Topic:           cfg.KafkaTopicEvents,
-			DeliveryTimeout: 10 * time.Second,
-		}, logger)
-		defer producer.Close()
-		app.Event.SetEventPublisher(producer)
-		logger.Info("kafka publisher enabled", "topic", cfg.KafkaTopicEvents)
-	}
+	// Transactional outbox: every lifecycle fact is recorded inside the same
+	// request transaction as its aggregate change, so delivery can neither
+	// race the commit nor silently drop. Shipping to Kafka happens in the
+	// worker's relay (at-least-once); the API itself has no broker contact.
+	app.Event.SetDomainEventStore(repository.NewDomainEventRepository(pool))
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,

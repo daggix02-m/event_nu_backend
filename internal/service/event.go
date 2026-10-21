@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -55,7 +55,7 @@ type EventService struct {
 	cats   categoryStore
 	orgs   organizerStore
 	media  mediaCheckStore
-	pub    domain.EventPublisher
+	store  domain.DomainEventWriter
 }
 
 func NewEventService(events eventStore, venues venueStore, cats categoryStore, orgs organizerStore) *EventService {
@@ -69,11 +69,11 @@ func (s *EventService) SetMediaStore(media mediaCheckStore) {
 	s.media = media
 }
 
-// SetEventPublisher wires optional background fan-out (nil = disabled).
-// main is the composition root that decides whether Kafka is part of this
-// deployment; the service treats it as a pure side-effect.
-func (s *EventService) SetEventPublisher(pub domain.EventPublisher) {
-	s.pub = pub
+// SetDomainEventStore wires the transactional outbox (nil = no fan-out).
+// main is the composition root; the service treats the write as a plain
+// side-effect of the same transaction that published the event.
+func (s *EventService) SetDomainEventStore(store domain.DomainEventWriter) {
+	s.store = store
 }
 
 // RequireOrganizer resolves the caller's active organizer, or a 403.
@@ -230,20 +230,21 @@ func (s *EventService) Publish(ctx context.Context, userID, eventID string) (*do
 		return nil, err
 	}
 	existing.Status = "published"
-	s.emitPublished(ctx, existing, org.ID)
+	if err := s.emitPublished(ctx, existing, org.ID, userID); err != nil {
+		return nil, err
+	}
 	return existing, nil
 }
 
-// emitPublished fans the publish fact out (best-effort). It deliberately does
-// only this: the caller's transaction commits after the handler returns, and
-// until the transactional-outbox slice this send is at-most-once — a broker
-// outage drops the fact, and a send racing slightly ahead of the commit is
-// tolerable (consumers get the ID and can reconcile). The goroutine detaches
-// from the request context so the send survives its own short window after
-// the HTTP response (WithoutCancel), bounded so nothing hangs.
-func (s *EventService) emitPublished(ctx context.Context, e *domain.Event, organizerID string) {
-	if s.pub == nil {
-		return
+// emitPublished records the publish fact in the transactional outbox —
+// synchronously, inside the caller's transaction. A failure propagates and
+// rolls the whole request back: either the aggregate changed AND its fact
+// exists after commit, or neither does — no silently dropped facts. The
+// relay worker turns the row into Kafka delivery later (at-least-once,
+// ordered per key).
+func (s *EventService) emitPublished(ctx context.Context, e *domain.Event, organizerID, userID string) error {
+	if s.store == nil {
+		return nil
 	}
 	payload, err := json.Marshal(map[string]any{
 		"event_id":     e.ID,
@@ -251,7 +252,7 @@ func (s *EventService) emitPublished(ctx context.Context, e *domain.Event, organ
 		"published_at": time.Now().UTC().Format(time.RFC3339),
 	})
 	if err != nil { // constant map of fixed-size values; cannot fail in practice
-		return
+		return err
 	}
 	ev := domain.DomainEvent{
 		Name:       "event.published",
@@ -259,14 +260,10 @@ func (s *EventService) emitPublished(ctx context.Context, e *domain.Event, organ
 		OccurredAt: time.Now().UTC(),
 		Payload:    payload,
 	}
-	pub := s.pub
-	go func() {
-		pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		defer cancel()
-		if err := pub.Publish(pctx, ev); err != nil {
-			slog.Error("domain event publish failed", "event", ev.Name, "key", ev.Key, "error", err.Error())
-		}
-	}()
+	if err := s.store.Write(ctx, ev, userID); err != nil {
+		return fmt.Errorf("record %s fact: %w", ev.Name, err)
+	}
+	return nil
 }
 
 func (s *EventService) GetEvent(ctx context.Context, id string) (*domain.Event, error) {

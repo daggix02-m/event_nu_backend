@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -496,42 +497,43 @@ func TestPublishSuccess(t *testing.T) {
 	}
 }
 
-// capturePublisher records emissions from the async hook; the small mutex
-// keeps the race detector honest since the hook fires off the request
-// goroutine.
-type capturePublisher struct {
-	mu  sync.Mutex
-	got []domain.DomainEvent
+// captureStore records outbox writes from the request path; the small
+// mutex keeps the race detector honest in concurrent table tests.
+type captureStore struct {
+	mu   sync.Mutex
+	got  []domain.DomainEvent
+	uids []string
 }
 
-func (c *capturePublisher) Publish(_ context.Context, ev domain.DomainEvent) error {
+func (c *captureStore) Write(_ context.Context, ev domain.DomainEvent, ownerUserID string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.got = append(c.got, ev)
+	c.uids = append(c.uids, ownerUserID)
 	return nil
 }
 
-func (c *capturePublisher) waitEvent(t *testing.T) domain.DomainEvent {
+func (c *captureStore) waitEvent(t *testing.T) (domain.DomainEvent, string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		c.mu.Lock()
 		n := len(c.got)
-		c.mu.Unlock()
 		if n > 0 {
-			c.mu.Lock()
-			defer c.mu.Unlock()
-			return c.got[0]
+			ev, uid := c.got[0], c.uids[0]
+			c.mu.Unlock()
+			return ev, uid
 		}
+		c.mu.Unlock()
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatal("no domain event emitted within 2s")
-	return domain.DomainEvent{}
+	t.Fatal("no domain event recorded within 2s")
+	return domain.DomainEvent{}, ""
 }
 
 // publishingService builds the same Publish-success fixture the
-// TestPublishSuccess pins, with an optional publisher attached.
-func publishingService(t *testing.T) *capturePublisher {
+// TestPublishSuccess pins, with the transactional outbox attached.
+func publishingService(t *testing.T) *captureStore {
 	t.Helper()
 	existing := draftEvent()
 	existing.ID = "e-1"
@@ -539,24 +541,28 @@ func publishingService(t *testing.T) *capturePublisher {
 	existing.Status = "draft"
 	venue := "v-1"
 	existing.VenueID = &venue
-	cap := &capturePublisher{}
+	store := &captureStore{}
 	s := NewEventService(stubEventStore{
 		onGetByID: func(id string) (*domain.Event, error) { return existing, nil },
 	}, stubVenueStore{}, stubCategoryStore{}, stubOrganizerStore{
 		onGetOrganizerByOwner: func(userID string) (*domain.Organizer, error) { return activeOrganizer(), nil },
 	})
-	s.SetEventPublisher(cap)
+	s.SetDomainEventStore(store)
 	if _, err := s.Publish(t.Context(), "u-1", "e-1"); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	return cap
+	return store
 }
 
 // TestPublishEmitsDomainEvent pins the fan-out contract: a successful
-// Publish emits exactly one event.published fact keyed by the event ID.
+// Publish records exactly one event.published fact keyed by the event ID,
+// attributed to the acting user.
 func TestPublishEmitsDomainEvent(t *testing.T) {
-	cap := publishingService(t)
-	ev := cap.waitEvent(t)
+	store := publishingService(t)
+	ev, owner := store.waitEvent(t)
+	if owner != "u-1" {
+		t.Fatalf("owner attribution: got %q want u-1", owner)
+	}
 	if ev.Name != "event.published" {
 		t.Fatalf("event name: got %q", ev.Name)
 	}
@@ -581,9 +587,9 @@ func TestPublishEmitsDomainEvent(t *testing.T) {
 	}
 }
 
-// TestPublishNilPublisherIsDisabled pins the opt-in posture: without a
-// publisher wired, Publish succeeds silently with no side channel.
-func TestPublishNilPublisherIsDisabled(t *testing.T) {
+// TestPublishNilStoreIsDisabled pins the opt-in posture: without an outbox
+// wired, Publish succeeds silently with no side channel.
+func TestPublishNilStoreIsDisabled(t *testing.T) {
 	existing := draftEvent()
 	existing.ID = "e-1"
 	existing.OrganizerID = "org-1"
@@ -596,8 +602,44 @@ func TestPublishNilPublisherIsDisabled(t *testing.T) {
 	})
 	got, err := s.Publish(t.Context(), "u-1", "e-1")
 	if err != nil || got.Status != "published" {
-		t.Fatalf("nil publisher must not affect the request: err=%v status=%q", err, got.Status)
+		t.Fatalf("nil store must not affect the request: err=%v status=%q", err, got.Status)
 	}
+}
+
+// TestPublishFactWriteFailureAborts pins the transactional guarantee:
+// when the fact cannot be recorded, the request fails — never a silently
+// dropped fact next to a committed state change.
+func TestPublishFactWriteFailureAborts(t *testing.T) {
+	existing := draftEvent()
+	existing.ID = "e-1"
+	existing.OrganizerID = "org-1"
+	venue := "v-1"
+	existing.VenueID = &venue
+	var statusSet bool
+	s := NewEventService(stubEventStore{
+		onGetByID: func(id string) (*domain.Event, error) { return existing, nil },
+		onUpdateStatus: func(id, st string) error {
+			statusSet = true
+			return nil
+		},
+	}, stubVenueStore{}, stubCategoryStore{}, stubOrganizerStore{
+		onGetOrganizerByOwner: func(userID string) (*domain.Organizer, error) { return activeOrganizer(), nil },
+	})
+	s.SetDomainEventStore(failStore{})
+	_, err := s.Publish(t.Context(), "u-1", "e-1")
+	if err == nil {
+		t.Fatal("fact write failure must abort the request")
+	}
+	if !statusSet {
+		t.Fatal("the state update should have run before the fact write failed (the caller's tx then rolls back)")
+	}
+}
+
+// failStore always refuses.
+type failStore struct{}
+
+func (failStore) Write(context.Context, domain.DomainEvent, string) error {
+	return fmt.Errorf("outbox refused")
 }
 
 func TestGetAndListEvents(t *testing.T) {

@@ -6,10 +6,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/daggix02-m/event_nu_backend/internal/config"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/email"
+	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/kafka"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/push"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/storage"
 	"github.com/daggix02-m/event_nu_backend/internal/repository"
@@ -52,6 +54,27 @@ func main() {
 
 	outbox := repository.NewOutboxRepository(pool)
 	emailConsumer := worker.NewEmailConsumer(logger, cfg, outbox, sender)
+
+	// Domain-event relay: only when Kafka is part of the deployment. The
+	// relay owns the broker connection — the API writes facts to the outbox
+	// atomically, this process ships them (at-least-once via lease + retry).
+	var relay *worker.DomainEventRelay
+	if len(cfg.KafkaBrokers) > 0 {
+		producer := kafka.NewProducer(kafka.ProducerConfig{
+			Brokers:         cfg.KafkaBrokers,
+			Topic:           cfg.KafkaTopicEvents,
+			DeliveryTimeout: 10 * time.Second,
+		}, logger)
+		defer producer.Close()
+		relay = worker.NewDomainEventRelay(logger, cfg, repository.NewDomainEventRepository(pool), producer)
+		if err := kafka.EnsureTopic(ctx, cfg.KafkaBrokers, cfg.KafkaTopicEvents, logger); err != nil {
+			logger.Error("ensuring kafka topic failed", "error", err.Error())
+			os.Exit(1)
+		}
+		logger.Info("domain event relay enabled", "topic", cfg.KafkaTopicEvents)
+	} else {
+		logger.Info("domain event relay disabled (KAFKA_BROKERS unset)")
+	}
 
 	store, err := storage.New(
 		cfg.MediaStorageProvider,
@@ -104,6 +127,9 @@ func main() {
 	g.Go(func() error { return mediaConsumer.Run(gctx) })
 	g.Go(func() error { return pushConsumer.Run(gctx) })
 	g.Go(func() error { return analyticsConsumer.Run(gctx) })
+	if relay != nil {
+		g.Go(func() error { return relay.Run(gctx) })
+	}
 	if err := g.Wait(); err != nil {
 		logger.Error("consumer error", "error", err.Error())
 		os.Exit(1)

@@ -93,10 +93,13 @@ type Config struct {
 	BrevoTemplateVerify  int
 
 	// Worker / email consumer tuning.
-	EmailPollInterval   time.Duration
-	EmailBatchSize      int
-	EmailMaxAttempts    int
-	EmailRetryBaseDelay time.Duration
+	EmailPollInterval time.Duration
+
+	// DomainEventPollInterval paces the outbox relay when Kafka is enabled.
+	DomainEventPollInterval time.Duration
+	EmailBatchSize          int
+	EmailMaxAttempts        int
+	EmailRetryBaseDelay     time.Duration
 
 	// Media pipeline. MediaStorageProvider is "local" (filesystem, dev/tests)
 	// or "s3" (S3-compatible API — MinIO locally, Cloudflare R2 in production).
@@ -210,6 +213,9 @@ func Load() (Config, error) {
 
 	if cfg.EmailPollInterval, err = parseDuration(getEnv("EMAIL_POLL_INTERVAL", "2s")); err != nil {
 		return Config{}, fmt.Errorf("EMAIL_POLL_INTERVAL: %w", err)
+	}
+	if cfg.DomainEventPollInterval, err = parseDuration(getEnv("DOMAIN_EVENT_POLL_INTERVAL", "1s")); err != nil {
+		return Config{}, fmt.Errorf("DOMAIN_EVENT_POLL_INTERVAL: %w", err)
 	}
 	if cfg.EmailBatchSize, err = strconv.Atoi(getEnv("EMAIL_BATCH_SIZE", "20")); err != nil {
 		return Config{}, fmt.Errorf("EMAIL_BATCH_SIZE must be an integer: %w", err)
