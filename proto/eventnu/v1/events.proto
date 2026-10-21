@@ -3,8 +3,11 @@
 // describes only what the eventnu/v1 EventService exposes.
 //
 // The Event message deliberately mirrors the REST EventDTO's public, shared
-// fields: per-user state (likes, saves) requires an authenticated identity
-// and arrives with the auth slice.
+// fields. Per-user state (likes, saves) resolves from the caller's identity
+// in the authorization metadata: the auth interceptor (slice 2) gives the
+// same OptionalAuth semantics as the REST middleware — anonymous callers get
+// the public like count with false booleans, an invalid token is treated as
+// anonymous rather than rejected.
 syntax = "proto3";
 
 package eventnu.v1;
@@ -54,6 +57,14 @@ message Event {
   string poster_url = 14;
   string teaser_url = 15;
   google.protobuf.Timestamp created_at = 16;
+
+  // Per-user state, resolved with the caller's identity from the
+  // authorization metadata (anonymous callers see the public like count and
+  // false booleans, mirroring the REST enrichment's defaults).
+  int64 like_count = 18;
+  bool liked_by_me = 19;
+  bool saved_by_me = 20;
+  optional string saved_folder_id = 21;
 }
 
 message ListEventsRequest {

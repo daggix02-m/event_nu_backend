@@ -34,6 +34,17 @@ type mediaResolver interface {
 	ResolveEventMedia(ctx context.Context, posterMediaID, teaserMediaID *string) (string, string, error)
 }
 
+// likeStateChecker / saveStateChecker are the same narrow views the REST
+// handlers use during enrichment; both states soft-fail with warned
+// defaults, exactly like the REST enrichment.
+type likeStateChecker interface {
+	State(ctx context.Context, eventID, userID string) (int, bool, error)
+}
+
+type saveStateChecker interface {
+	State(ctx context.Context, userID, eventID string) (bool, *string, error)
+}
+
 // EventServer serves eventnu.v1.EventService over gRPC from the application's
 // EventService and MediaService. It is wired in cmd/api alongside the REST
 // server; tests drive it through bufconn.
@@ -41,13 +52,17 @@ type EventServer struct {
 	eventnupb.UnimplementedEventServiceServer
 	event  *service.EventService
 	media  mediaResolver
+	likes  likeStateChecker
+	saves  saveStateChecker
 	logger *slog.Logger
 }
 
 // NewEventServer wires the gRPC event server from the services it shares with
-// the REST transport; main is the composition root that passes them.
-func NewEventServer(event *service.EventService, media mediaResolver, logger *slog.Logger) *EventServer {
-	return &EventServer{event: event, media: media, logger: logger}
+// the REST transport; main is the composition root that passes them. Likes
+// and saves may be nil (hermetic unit tests) — enrichment then yields the
+// wire defaults, as REST does when the services are unwired.
+func NewEventServer(event *service.EventService, media mediaResolver, likes likeStateChecker, saves saveStateChecker, logger *slog.Logger) *EventServer {
+	return &EventServer{event: event, media: media, likes: likes, saves: saves, logger: logger}
 }
 
 // GetEvent returns one event by id.
@@ -135,6 +150,35 @@ func (s *EventServer) toEventDTO(ctx context.Context, e *domain.Event) *eventnup
 			} else {
 				out.PosterUrl, out.TeaserUrl = poster, teaser
 			}
+		}
+	}
+
+	// Per-user state: users perceive the same enrichment as REST — like
+	// count always resolves (anonymous callers see the public count with
+	// liked=false), save state is user-side. Either service failing degrades
+	// to defaults without failing the read (mirrors handlers'
+	// enrichedEventDTO).
+	userID := UserID(ctx)
+	if s.likes != nil {
+		count, liked, lerr := s.likes.State(ctx, e.ID, userID)
+		if lerr != nil {
+			if s.logger != nil {
+				s.logger.Warn("event-like state unavailable", "event_id", e.ID, "error", lerr.Error())
+			}
+		} else {
+			out.LikeCount = int64(count)
+			out.LikedByMe = liked
+		}
+	}
+	if s.saves != nil {
+		saved, folderID, serr := s.saves.State(ctx, userID, e.ID)
+		if serr != nil {
+			if s.logger != nil {
+				s.logger.Warn("event-save state unavailable", "event_id", e.ID, "error", serr.Error())
+			}
+		} else {
+			out.SavedByMe = saved
+			out.SavedFolderId = folderID
 		}
 	}
 	return out

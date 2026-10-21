@@ -70,10 +70,11 @@ func main() {
 		grpcSrv = grpc.NewServer(
 			grpc.ChainUnaryInterceptor(
 				transportgrpc.RecoveryInterceptor(logger),
+				transportgrpc.OptionalAuthInterceptor(app.Auth),
 				transportgrpc.LoggingInterceptor(logger),
 			),
 		)
-		eventnupb.RegisterEventServiceServer(grpcSrv, transportgrpc.NewEventServer(app.Event, app.Media, app.Logger))
+		eventnupb.RegisterEventServiceServer(grpcSrv, transportgrpc.NewEventServer(app.Event, app.Media, app.Like, app.Save, app.Logger))
 
 		lis, err := net.Listen("tcp", cfg.GRPCAddr)
 		if err != nil {
