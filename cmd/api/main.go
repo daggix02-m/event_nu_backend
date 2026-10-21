@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,7 +15,10 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/api/routes"
 	"github.com/daggix02-m/event_nu_backend/internal/config"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
+	"github.com/daggix02-m/event_nu_backend/internal/transport/grpc"
+	"github.com/daggix02-m/event_nu_backend/internal/transport/grpc/eventnupb"
 	"github.com/joho/godotenv"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -59,6 +63,32 @@ func main() {
 		}
 	}()
 
+	// gRPC transport: opt-in via GRPC_ADDR. It shares the same Application
+	// services as REST; an unset GRPC_ADDR keeps the deployment REST-only.
+	var grpcSrv *grpc.Server
+	if cfg.GRPCAddr != "" {
+		grpcSrv = grpc.NewServer(
+			grpc.ChainUnaryInterceptor(
+				transportgrpc.RecoveryInterceptor(logger),
+				transportgrpc.LoggingInterceptor(logger),
+			),
+		)
+		eventnupb.RegisterEventServiceServer(grpcSrv, transportgrpc.NewEventServer(app.Event, app.Media, app.Logger))
+
+		lis, err := net.Listen("tcp", cfg.GRPCAddr)
+		if err != nil {
+			logger.Error("grpc listen failed", "addr", cfg.GRPCAddr, "error", err.Error())
+			os.Exit(1)
+		}
+		logger.Info("grpc server starting", "addr", cfg.GRPCAddr, "env", cfg.AppEnv)
+		go func() {
+			if err := grpcSrv.Serve(lis); err != nil {
+				logger.Error("grpc server error", "error", err.Error())
+				os.Exit(1)
+			}
+		}()
+	}
+
 	<-ctx.Done()
 	logger.Info("shutdown signal received")
 
@@ -67,6 +97,9 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "error", err.Error())
 		os.Exit(1)
+	}
+	if grpcSrv != nil {
+		grpcSrv.GracefulStop()
 	}
 	logger.Info("server stopped")
 }

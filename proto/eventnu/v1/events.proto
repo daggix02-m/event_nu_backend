@@ -1,0 +1,71 @@
+// The gRPC transport contract (Phase 3). One proto package per API version;
+// the REST layer keeps serving the same application services, so this schema
+// describes only what the eventnu/v1 EventService exposes.
+//
+// The Event message deliberately mirrors the REST EventDTO's public, shared
+// fields: per-user state (likes, saves) requires an authenticated identity
+// and arrives with the auth slice.
+syntax = "proto3";
+
+package eventnu.v1;
+
+option go_package = "github.com/daggix02-m/event_nu_backend/internal/transport/grpc/eventnupb;eventnupb";
+
+import "google/protobuf/timestamp.proto";
+
+// EventService is the public event catalog: discovery-level reads shared by
+// the mobile client and integrations. Organizers manage events through the
+// REST API; a gRPC write slice would come with auth.
+service EventService {
+  // GetEvent returns one published-or-not event by id (the REST handler does
+  // the same: unauthenticated but not restricted to published rows).
+  rpc GetEvent(GetEventRequest) returns (Event);
+
+  // ListEvents pages the public catalog with the same filters the REST
+  // endpoint accepts (query, category). Geo filters arrive with the mobile
+  // map feature if gRPC needs them.
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+}
+
+message GetEventRequest {
+  // id is the event UUID; an invalid id maps to INVALID_ARGUMENT.
+  string id = 1;
+}
+
+message Event {
+  string id = 1;
+  string organizer_id = 2;
+  optional string venue_id = 3;
+  optional string category_id = 4;
+  string title = 5;
+  string description = 6;
+  google.protobuf.Timestamp starts_at = 7;
+  optional google.protobuf.Timestamp ends_at = 8;
+  bool price_is_free = 9;
+  // price_display is the human-formatted price ("Free", "500 ETB", ...).
+  string price_display = 10;
+  string action_type = 11;
+  string status = 12;
+  string moderation_status = 17;
+  optional uint32 max_attendees = 13;
+  // poster_url / teaser_url are resolved CDN or local-route URLs; empty when
+  // the event has no media attached or resolution failed (soft-fail, same as
+  // the REST enrichment).
+  string poster_url = 14;
+  string teaser_url = 15;
+  google.protobuf.Timestamp created_at = 16;
+}
+
+message ListEventsRequest {
+  // query is the full-text filter over title+description ("" = no filter).
+  string query = 1;
+  string category_id = 2;
+  // page starts at 1; limit must be within [1, 100].
+  uint32 page = 3;
+  uint32 limit = 4;
+}
+
+message ListEventsResponse {
+  repeated Event events = 1;
+  int64 total = 2;
+}

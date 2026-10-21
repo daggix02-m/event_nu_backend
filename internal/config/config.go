@@ -12,6 +12,11 @@ type Config struct {
 	AppEnv string
 	Port   string
 
+	// GRPCAddr serves the gRPC transport when set (e.g. ":50051"); empty
+	// means the gRPC transport is disabled — the REST API alone is the
+	// default so existing deployments run unchanged.
+	GRPCAddr string
+
 	DatabaseURL      string
 	DatabaseAdminURL string
 
@@ -131,6 +136,7 @@ func Load() (Config, error) {
 
 	cfg.AppEnv = getEnv("APP_ENV", "development")
 	cfg.Port = getEnv("PORT", "8080")
+	cfg.GRPCAddr = getEnv("GRPC_ADDR", "")
 
 	cfg.DatabaseURL = getEnv("DATABASE_URL", "")
 	cfg.DatabaseAdminURL = getEnv("DATABASE_ADMIN_URL", "")
