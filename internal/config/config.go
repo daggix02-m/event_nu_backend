@@ -17,6 +17,15 @@ type Config struct {
 	// default so existing deployments run unchanged.
 	GRPCAddr string
 
+	// KafkaBrokers enables the domain-event publisher when non-empty
+	// (comma-separated seed brokers, e.g. "localhost:9092"). Like GRPCAddr,
+	// empty means disabled so deployments run unchanged.
+	KafkaBrokers []string
+
+	// KafkaTopicEvents receives the published-fact topic; overridable only
+	// because consumers may live in another deployment.
+	KafkaTopicEvents string
+
 	DatabaseURL      string
 	DatabaseAdminURL string
 
@@ -137,6 +146,8 @@ func Load() (Config, error) {
 	cfg.AppEnv = getEnv("APP_ENV", "development")
 	cfg.Port = getEnv("PORT", "8080")
 	cfg.GRPCAddr = getEnv("GRPC_ADDR", "")
+	cfg.KafkaBrokers = getEnvCSV("KAFKA_BROKERS", "")
+	cfg.KafkaTopicEvents = getEnv("KAFKA_EVENTS_TOPIC", "eventnu.events")
 
 	cfg.DatabaseURL = getEnv("DATABASE_URL", "")
 	cfg.DatabaseAdminURL = getEnv("DATABASE_ADMIN_URL", "")
@@ -400,4 +411,23 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getEnvCSV reads a comma-separated list, trimming whitespace; an unset or
+// empty variable yields nil so "disabled" is unambiguous.
+func getEnvCSV(key, fallback string) []string {
+	raw := getEnv(key, fallback)
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if s := strings.TrimSpace(part); s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

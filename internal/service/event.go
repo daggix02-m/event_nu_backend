@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
@@ -52,6 +55,7 @@ type EventService struct {
 	cats   categoryStore
 	orgs   organizerStore
 	media  mediaCheckStore
+	pub    domain.EventPublisher
 }
 
 func NewEventService(events eventStore, venues venueStore, cats categoryStore, orgs organizerStore) *EventService {
@@ -63,6 +67,13 @@ func NewEventService(events eventStore, venues venueStore, cats categoryStore, o
 // SetNotifier pattern.
 func (s *EventService) SetMediaStore(media mediaCheckStore) {
 	s.media = media
+}
+
+// SetEventPublisher wires optional background fan-out (nil = disabled).
+// main is the composition root that decides whether Kafka is part of this
+// deployment; the service treats it as a pure side-effect.
+func (s *EventService) SetEventPublisher(pub domain.EventPublisher) {
+	s.pub = pub
 }
 
 // RequireOrganizer resolves the caller's active organizer, or a 403.
@@ -219,7 +230,43 @@ func (s *EventService) Publish(ctx context.Context, userID, eventID string) (*do
 		return nil, err
 	}
 	existing.Status = "published"
+	s.emitPublished(ctx, existing, org.ID)
 	return existing, nil
+}
+
+// emitPublished fans the publish fact out (best-effort). It deliberately does
+// only this: the caller's transaction commits after the handler returns, and
+// until the transactional-outbox slice this send is at-most-once — a broker
+// outage drops the fact, and a send racing slightly ahead of the commit is
+// tolerable (consumers get the ID and can reconcile). The goroutine detaches
+// from the request context so the send survives its own short window after
+// the HTTP response (WithoutCancel), bounded so nothing hangs.
+func (s *EventService) emitPublished(ctx context.Context, e *domain.Event, organizerID string) {
+	if s.pub == nil {
+		return
+	}
+	payload, err := json.Marshal(map[string]any{
+		"event_id":     e.ID,
+		"organizer_id": organizerID,
+		"published_at": time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil { // constant map of fixed-size values; cannot fail in practice
+		return
+	}
+	ev := domain.DomainEvent{
+		Name:       "event.published",
+		Key:        e.ID,
+		OccurredAt: time.Now().UTC(),
+		Payload:    payload,
+	}
+	pub := s.pub
+	go func() {
+		pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		if err := pub.Publish(pctx, ev); err != nil {
+			slog.Error("domain event publish failed", "event", ev.Name, "key", ev.Key, "error", err.Error())
+		}
+	}()
 }
 
 func (s *EventService) GetEvent(ctx context.Context, id string) (*domain.Event, error) {

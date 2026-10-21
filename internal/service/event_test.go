@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -491,6 +493,110 @@ func TestPublishSuccess(t *testing.T) {
 	}
 	if got.Status != "published" {
 		t.Fatalf("expected returned event to be published, got %q", got.Status)
+	}
+}
+
+// capturePublisher records emissions from the async hook; the small mutex
+// keeps the race detector honest since the hook fires off the request
+// goroutine.
+type capturePublisher struct {
+	mu  sync.Mutex
+	got []domain.DomainEvent
+}
+
+func (c *capturePublisher) Publish(_ context.Context, ev domain.DomainEvent) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.got = append(c.got, ev)
+	return nil
+}
+
+func (c *capturePublisher) waitEvent(t *testing.T) domain.DomainEvent {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		c.mu.Lock()
+		n := len(c.got)
+		c.mu.Unlock()
+		if n > 0 {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			return c.got[0]
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("no domain event emitted within 2s")
+	return domain.DomainEvent{}
+}
+
+// publishingService builds the same Publish-success fixture the
+// TestPublishSuccess pins, with an optional publisher attached.
+func publishingService(t *testing.T) *capturePublisher {
+	t.Helper()
+	existing := draftEvent()
+	existing.ID = "e-1"
+	existing.OrganizerID = "org-1"
+	existing.Status = "draft"
+	venue := "v-1"
+	existing.VenueID = &venue
+	cap := &capturePublisher{}
+	s := NewEventService(stubEventStore{
+		onGetByID: func(id string) (*domain.Event, error) { return existing, nil },
+	}, stubVenueStore{}, stubCategoryStore{}, stubOrganizerStore{
+		onGetOrganizerByOwner: func(userID string) (*domain.Organizer, error) { return activeOrganizer(), nil },
+	})
+	s.SetEventPublisher(cap)
+	if _, err := s.Publish(t.Context(), "u-1", "e-1"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	return cap
+}
+
+// TestPublishEmitsDomainEvent pins the fan-out contract: a successful
+// Publish emits exactly one event.published fact keyed by the event ID.
+func TestPublishEmitsDomainEvent(t *testing.T) {
+	cap := publishingService(t)
+	ev := cap.waitEvent(t)
+	if ev.Name != "event.published" {
+		t.Fatalf("event name: got %q", ev.Name)
+	}
+	if ev.Key != "e-1" {
+		t.Fatalf("event key: got %q (want the aggregate id)", ev.Key)
+	}
+	if len(ev.Payload) == 0 {
+		t.Fatal("payload: empty")
+	}
+	var payload struct {
+		EventID     string `json:"event_id"`
+		OrganizerID string `json:"organizer_id"`
+	}
+	if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+		t.Fatalf("payload not JSON: %v", err)
+	}
+	if payload.EventID != "e-1" || payload.OrganizerID != "org-1" {
+		t.Fatalf("payload ids: %+v", payload)
+	}
+	if ev.OccurredAt.IsZero() {
+		t.Fatal("occurred_at not set")
+	}
+}
+
+// TestPublishNilPublisherIsDisabled pins the opt-in posture: without a
+// publisher wired, Publish succeeds silently with no side channel.
+func TestPublishNilPublisherIsDisabled(t *testing.T) {
+	existing := draftEvent()
+	existing.ID = "e-1"
+	existing.OrganizerID = "org-1"
+	venue := "v-1"
+	existing.VenueID = &venue
+	s := NewEventService(stubEventStore{
+		onGetByID: func(id string) (*domain.Event, error) { return existing, nil },
+	}, stubVenueStore{}, stubCategoryStore{}, stubOrganizerStore{
+		onGetOrganizerByOwner: func(userID string) (*domain.Organizer, error) { return activeOrganizer(), nil },
+	})
+	got, err := s.Publish(t.Context(), "u-1", "e-1")
+	if err != nil || got.Status != "published" {
+		t.Fatalf("nil publisher must not affect the request: err=%v status=%q", err, got.Status)
 	}
 }
 
