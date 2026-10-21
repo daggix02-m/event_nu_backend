@@ -10,7 +10,17 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
+
+// setRouteParam injects a chi route context carrying one URL parameter,
+// standing in for the router that would normally set it during dispatch.
+func setRouteParam(r *http.Request, key, val string) *http.Request {
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add(key, val)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
 
 func TestFactoryDefaultsToLocal(t *testing.T) {
 	store, err := New("", "", "", "", "", "", "http://cdn.example", t.TempDir())
@@ -144,7 +154,7 @@ func TestLocalPublicReadURLEscapesKeyAndTrimsSlash(t *testing.T) {
 }
 
 // TestLocalSafeKeyRejectsTraversal drives the provider's defense-in-depth check
-// directly. Go's http.ServeMux cleans path segments before routing, but the
+// directly. The router normalizes the URL path before dispatch, but the
 // handler must never write outside the store directory regardless.
 func TestLocalSafeKeyRejectsTraversal(t *testing.T) {
 	l := newLocalStore(t)
@@ -156,7 +166,7 @@ func TestLocalSafeKeyRejectsTraversal(t *testing.T) {
 	}
 	for _, key := range bad {
 		req := httptest.NewRequest(http.MethodGet, "/media/objects/x", nil)
-		req.SetPathValue("key", key)
+		req = setRouteParam(req, "*", key)
 		if _, err := l.safeKey(req); err == nil {
 			t.Errorf("safeKey(%q) must fail, got nil", key)
 		}
@@ -173,7 +183,7 @@ func TestLocalSafeKeyRejectsTraversal(t *testing.T) {
 	}
 	for _, g := range good {
 		req := httptest.NewRequest(http.MethodGet, "/media/objects/x", nil)
-		req.SetPathValue("key", g.in)
+		req = setRouteParam(req, "*", g.in)
 		got, err := l.safeKey(req)
 		if err != nil {
 			t.Errorf("safeKey(%q) failed: %v", g.in, err)
@@ -192,8 +202,8 @@ func TestLocalServeObject(t *testing.T) {
 		t.Fatalf("Upload: %v", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle("GET /media/objects/{key...}", http.HandlerFunc(l.ServeObject))
+	mux := chi.NewRouter()
+	mux.Method(http.MethodGet, "/media/objects/*", http.HandlerFunc(l.ServeObject))
 
 	tt := []struct {
 		name   string
@@ -224,8 +234,8 @@ func TestLocalStoreObject(t *testing.T) {
 	l := newLocalStore(t)
 	const maxBytes = 16
 
-	mux := http.NewServeMux()
-	mux.Handle("PUT /media/objects/{key...}", l.StoreObject(maxBytes))
+	mux := chi.NewRouter()
+	mux.Method(http.MethodPut, "/media/objects/*", l.StoreObject(maxBytes))
 
 	tt := []struct {
 		name        string

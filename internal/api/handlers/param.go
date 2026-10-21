@@ -3,6 +3,8 @@ package handlers
 import (
 	"net/http"
 	"regexp"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // uuidPathRe matches the canonical 8-4-4-4-12 hex form emitted by PostgreSQL's
@@ -19,6 +21,6 @@ var uuidPathRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{
 // The project models ids as plain strings (no uuid dependency); the strict
 // regex intentionally admits only the canonical form the server itself emits.
 func ParseUUIDParam(r *http.Request, name string) (string, bool) {
-	v := r.PathValue(name)
+	v := chi.URLParam(r, name)
 	return v, uuidPathRe.MatchString(v)
 }

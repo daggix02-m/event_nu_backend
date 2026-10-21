@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // Local is a filesystem-backed ObjectStore for development and tests. Objects
@@ -128,10 +130,11 @@ func (l *Local) StoreObject(maxBytes int64) http.HandlerFunc {
 	}
 }
 
-// safeKey extracts the {key...} path value and rejects anything that would
-// escape the store directory.
+// safeKey extracts the wildcard path value ({key...} in a stdlib mux is the
+// catch-all "*" in chi) and rejects anything that would escape the store
+// directory.
 func (l *Local) safeKey(r *http.Request) (string, error) {
-	key := r.PathValue("key")
+	key := chi.URLParam(r, "*")
 	if key == "" {
 		return "", fmt.Errorf("missing object key")
 	}

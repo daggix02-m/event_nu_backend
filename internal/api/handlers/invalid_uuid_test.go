@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,7 +9,16 @@ import (
 
 	"github.com/daggix02-m/event_nu_backend/internal/api"
 	"github.com/daggix02-m/event_nu_backend/internal/api/handlers"
+	"github.com/go-chi/chi/v5"
 )
+
+// routeParamContext injects a chi route context carrying one URL parameter,
+// standing in for the router that would normally set it during dispatch.
+func routeParamContext(r *http.Request, key, val string) *http.Request {
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add(key, val)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
 
 // TestInvalidUUIDPathParamsReturn404 verifies every handler that binds a UUID
 // path parameter rejects a malformed value with a clean 404 before any
@@ -87,7 +97,7 @@ func TestInvalidUUIDPathParamsReturn404(t *testing.T) {
 	for _, tc := range cases {
 		for _, bad := range []string{"not-a-uuid", "", "81f63f0a-", "9f5f0a2c-0000-0000-0000-00000000000Z"} {
 			req := httptest.NewRequest(tc.method, strings.ReplaceAll(tc.path, "{id}", bad), nil)
-			req.SetPathValue("id", bad)
+			req = routeParamContext(req, "id", bad)
 			rec := httptest.NewRecorder()
 			tc.handler(rec, req)
 

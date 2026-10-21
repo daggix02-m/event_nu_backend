@@ -9,16 +9,36 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/api/metrics"
 	"github.com/daggix02-m/event_nu_backend/internal/api/middleware"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/storage"
+	"github.com/go-chi/chi/v5"
 )
 
-// New builds the route table and wraps it in the middleware chain.
+// New builds the chi route table and wires it up through the middleware chain
+// (chi's .Use middlewares run top-down, so the first Use is the outermost).
 func New(app *api.Application) http.Handler {
-	mux := http.NewServeMux()
+	allowed := make(map[string]struct{}, len(app.Config.CORSAllowedOrigins))
+	for _, o := range app.Config.CORSAllowedOrigins {
+		allowed[o] = struct{}{}
+	}
 
-	mux.HandleFunc("GET /healthz", handlers.Healthz(app))
-	mux.HandleFunc("GET /readyz", handlers.Readyz(app))
+	mux := chi.NewRouter()
+
+	// Count every completed request (method + status) at the outermost edge —
+	// outside RecoverPanic's 500 conversion and CORS short-circuits, but not
+	// inside LogRequest's redaction scope. /metrics scrapes are counted too,
+	// which is the normal Prometheus self-measurement behavior.
+	mux.Use(metrics.Count(app.Metrics))
+	mux.Use(middleware.RecoverPanic(app.Logger))
+	mux.Use(middleware.RequestTimeout(15 * time.Second))
+	mux.Use(middleware.CORS(allowed))
+	mux.Use(middleware.SecureHeaders)
+	mux.Use(middleware.RequestID)
+	mux.Use(middleware.LogRequest(app.Logger))
+	mux.Use(middleware.BeginRequestTx(app.DB, app.Logger))
+
+	mux.Method(http.MethodGet, "/healthz", handlers.Healthz(app))
+	mux.Method(http.MethodGet, "/readyz", handlers.Readyz(app))
 	// /metrics is deliberately outside auth/RLS and never touches the database.
-	mux.HandleFunc("GET /metrics", handlers.Metrics(app))
+	mux.Method(http.MethodGet, "/metrics", handlers.Metrics(app))
 
 	auth := handlers.NewAuthHandlers(app, app.Auth)
 	email := handlers.NewEmailHandlers(app)
@@ -76,11 +96,11 @@ func New(app *api.Application) http.Handler {
 	// identity; anonymous batches insert NULL user_id.
 	ingestRule := middleware.Rule{Limit: app.Config.AnalyticsIngestRateLimit, Window: app.Config.AnalyticsIngestRateWindow}
 
-	mux.Handle("POST /api/v1/auth/register", rateLimited(auth.Register, withIPAndAccount(registerRule)...))
-	mux.Handle("POST /api/v1/auth/login", rateLimited(auth.Login, withIPAndAccount(loginRule)...))
-	mux.Handle("POST /api/v1/auth/refresh", rateLimited(auth.Refresh, withIP(refreshRule)...))
-	mux.Handle("POST /api/v1/auth/logout", service(auth.Logout))
-	mux.Handle("POST /api/v1/auth/verify", rateLimited(email.VerifyPOST, withIP(verifyRule)...))
+	mux.Method(http.MethodPost, "/api/v1/auth/register", rateLimited(auth.Register, withIPAndAccount(registerRule)...))
+	mux.Method(http.MethodPost, "/api/v1/auth/login", rateLimited(auth.Login, withIPAndAccount(loginRule)...))
+	mux.Method(http.MethodPost, "/api/v1/auth/refresh", rateLimited(auth.Refresh, withIP(refreshRule)...))
+	mux.Method(http.MethodPost, "/api/v1/auth/logout", service(auth.Logout))
+	mux.Method(http.MethodPost, "/api/v1/auth/verify", rateLimited(email.VerifyPOST, withIP(verifyRule)...))
 	// First-party analytics ingest (Phase 33). Never rejects anonymous callers;
 	// a valid Bearer token only lets the server attribute events to that user.
 	ingest := func(h http.HandlerFunc) http.Handler {
@@ -89,29 +109,29 @@ func New(app *api.Application) http.Handler {
 				middleware.WithRole("service")(
 					middleware.SetRLS(h))))
 	}
-	mux.Handle("POST /api/v1/analytics/events", ingest(analyticsHandlers.Ingest))
+	mux.Method(http.MethodPost, "/api/v1/analytics/events", ingest(analyticsHandlers.Ingest))
 
 	// Public read routes: role 'user' with no identity — RLS gates visibility
 	// purely on row content (published/active/non-deleted).
 	public := func(h http.HandlerFunc) http.Handler {
 		return middleware.WithRole("user")(middleware.SetRLS(h))
 	}
-	mux.Handle("GET /api/v1/venues", public(events.ListVenues))
-	mux.Handle("GET /api/v1/categories", public(events.ListCategories))
+	mux.Method(http.MethodGet, "/api/v1/venues", public(events.ListVenues))
+	mux.Method(http.MethodGet, "/api/v1/categories", public(events.ListCategories))
 	// Event reads surface per-user like state, so they run with optional
 	// authentication: a valid Bearer token personalizes the response; missing
 	// or invalid tokens degrade to the anonymous view rather than 401.
 	optional := func(h http.HandlerFunc) http.Handler {
 		return middleware.OptionalAuth(app.Auth)(middleware.SetRLS(h))
 	}
-	mux.Handle("GET /api/v1/events", optional(events.ListEvents))
-	mux.Handle("GET /api/v1/events/{id}", optional(events.GetEvent))
-	mux.Handle("GET /api/v1/events/{id}/comments", public(comments.List))
-	mux.Handle("GET /api/v1/events/{id}/reviews", public(reviews.List))
-	mux.Handle("GET /api/v1/venues/{id}", public(ven.Get))
+	mux.Method(http.MethodGet, "/api/v1/events", optional(events.ListEvents))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}", optional(events.GetEvent))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}/comments", public(comments.List))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}/reviews", public(reviews.List))
+	mux.Method(http.MethodGet, "/api/v1/venues/{id}", public(ven.Get))
 	// Organizer profiles need follow-state personalization, so they also run
 	// under optional auth (anonymous readers get followed_by_me=false).
-	mux.Handle("GET /api/v1/organizers/{id}", optional(follows.GetOrganizer))
+	mux.Method(http.MethodGet, "/api/v1/organizers/{id}", optional(follows.GetOrganizer))
 
 	// Protected routes: authenticate, then apply RLS as the authenticated user.
 	protected := func(h http.HandlerFunc) http.Handler {
@@ -125,121 +145,121 @@ func New(app *api.Application) http.Handler {
 			middleware.SetRLS(
 				middleware.Idempotency(app.Idempotency)(h)))
 	}
-	mux.Handle("GET /api/v1/users/me", protected(auth.Me))
-	mux.Handle("PATCH /api/v1/users/me", protected(auth.UpdateMe))
+	mux.Method(http.MethodGet, "/api/v1/users/me", protected(auth.Me))
+	mux.Method(http.MethodPatch, "/api/v1/users/me", protected(auth.UpdateMe))
 	// Onboarding & preferences (Phase 33): GET the user's interest categories,
 	// PUT a full replace (which completes onboarding), or explicitly skip.
 	// Skip is idempotent and needs no body, so both stay retry-safe without an
 	// Idempotency-Key.
-	mux.Handle("GET /api/v1/users/me/preferences", protected(prefs.Get))
-	mux.Handle("PUT /api/v1/users/me/preferences", protected(prefs.Replace))
-	mux.Handle("POST /api/v1/users/me/onboarding/skip", protected(prefs.SkipOnboarding))
-	mux.Handle("POST /api/v1/organizer-applications", protectedIdem(org.Apply))
-	mux.Handle("GET /api/v1/organizer-applications/me", protected(org.GetMyApplication))
-	mux.Handle("GET /api/v1/me/organizer", protected(org.GetMyOrganizer))
-	mux.Handle("GET /api/v1/me/events", protected(events.ListMyEvents))
-	mux.Handle("POST /api/v1/venues", protectedIdem(events.CreateVenue))
-	mux.Handle("POST /api/v1/events", protectedIdem(events.CreateEvent))
-	mux.Handle("PATCH /api/v1/events/{id}", protected(events.UpdateEvent))
-	mux.Handle("POST /api/v1/events/{id}/publish", protected(events.Publish))
-	mux.Handle("POST /api/v1/events/{id}/comments", protected(comments.Create))
-	mux.Handle("PATCH /api/v1/comments/{id}", protected(comments.Update))
-	mux.Handle("DELETE /api/v1/comments/{id}", protected(comments.Delete))
-	mux.Handle("POST /api/v1/events/{id}/like", protected(events.AddLike))
-	mux.Handle("DELETE /api/v1/events/{id}/like", protected(events.RemoveLike))
-	mux.Handle("GET /api/v1/me/save-folders", protected(saves.ListFolders))
-	mux.Handle("POST /api/v1/me/save-folders", protectedIdem(saves.CreateFolder))
-	mux.Handle("PATCH /api/v1/me/save-folders/{id}", protected(saves.UpdateFolder))
-	mux.Handle("DELETE /api/v1/me/save-folders/{id}", protected(saves.DeleteFolder))
-	mux.Handle("GET /api/v1/me/saves", protected(saves.ListSaves))
-	mux.Handle("POST /api/v1/events/{id}/save", protected(saves.SaveEvent))
-	mux.Handle("DELETE /api/v1/events/{id}/save", protected(saves.UnsaveEvent))
-	mux.Handle("POST /api/v1/events/{id}/share", protectedIdem(shares.RecordShare))
-	mux.Handle("POST /api/v1/organizers/{id}/follow", protected(follows.Follow))
-	mux.Handle("DELETE /api/v1/organizers/{id}/follow", protected(follows.Unfollow))
-	mux.Handle("POST /api/v1/events/{id}/rsvp", protected(rsvp.Create))
-	mux.Handle("DELETE /api/v1/events/{id}/rsvp", protected(rsvp.Cancel))
-	mux.Handle("GET /api/v1/events/{id}/rsvp", protected(rsvp.State))
-	mux.Handle("GET /api/v1/me/rsvps", protected(rsvp.MyRsvps))
-	mux.Handle("POST /api/v1/events/{id}/reviews", protected(reviews.Create))
-	mux.Handle("PATCH /api/v1/reviews/{id}", protected(reviews.Update))
-	mux.Handle("DELETE /api/v1/reviews/{id}", protected(reviews.Delete))
+	mux.Method(http.MethodGet, "/api/v1/users/me/preferences", protected(prefs.Get))
+	mux.Method(http.MethodPut, "/api/v1/users/me/preferences", protected(prefs.Replace))
+	mux.Method(http.MethodPost, "/api/v1/users/me/onboarding/skip", protected(prefs.SkipOnboarding))
+	mux.Method(http.MethodPost, "/api/v1/organizer-applications", protectedIdem(org.Apply))
+	mux.Method(http.MethodGet, "/api/v1/organizer-applications/me", protected(org.GetMyApplication))
+	mux.Method(http.MethodGet, "/api/v1/me/organizer", protected(org.GetMyOrganizer))
+	mux.Method(http.MethodGet, "/api/v1/me/events", protected(events.ListMyEvents))
+	mux.Method(http.MethodPost, "/api/v1/venues", protectedIdem(events.CreateVenue))
+	mux.Method(http.MethodPost, "/api/v1/events", protectedIdem(events.CreateEvent))
+	mux.Method(http.MethodPatch, "/api/v1/events/{id}", protected(events.UpdateEvent))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/publish", protected(events.Publish))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/comments", protected(comments.Create))
+	mux.Method(http.MethodPatch, "/api/v1/comments/{id}", protected(comments.Update))
+	mux.Method(http.MethodDelete, "/api/v1/comments/{id}", protected(comments.Delete))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/like", protected(events.AddLike))
+	mux.Method(http.MethodDelete, "/api/v1/events/{id}/like", protected(events.RemoveLike))
+	mux.Method(http.MethodGet, "/api/v1/me/save-folders", protected(saves.ListFolders))
+	mux.Method(http.MethodPost, "/api/v1/me/save-folders", protectedIdem(saves.CreateFolder))
+	mux.Method(http.MethodPatch, "/api/v1/me/save-folders/{id}", protected(saves.UpdateFolder))
+	mux.Method(http.MethodDelete, "/api/v1/me/save-folders/{id}", protected(saves.DeleteFolder))
+	mux.Method(http.MethodGet, "/api/v1/me/saves", protected(saves.ListSaves))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/save", protected(saves.SaveEvent))
+	mux.Method(http.MethodDelete, "/api/v1/events/{id}/save", protected(saves.UnsaveEvent))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/share", protectedIdem(shares.RecordShare))
+	mux.Method(http.MethodPost, "/api/v1/organizers/{id}/follow", protected(follows.Follow))
+	mux.Method(http.MethodDelete, "/api/v1/organizers/{id}/follow", protected(follows.Unfollow))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/rsvp", protected(rsvp.Create))
+	mux.Method(http.MethodDelete, "/api/v1/events/{id}/rsvp", protected(rsvp.Cancel))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}/rsvp", protected(rsvp.State))
+	mux.Method(http.MethodGet, "/api/v1/me/rsvps", protected(rsvp.MyRsvps))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/reviews", protected(reviews.Create))
+	mux.Method(http.MethodPatch, "/api/v1/reviews/{id}", protected(reviews.Update))
+	mux.Method(http.MethodDelete, "/api/v1/reviews/{id}", protected(reviews.Delete))
 	// Reports: target id must be a UUID; the entity type is fixed per route.
-	mux.Handle("POST /api/v1/events/{id}/report", protected(reports.ReportTarget("event")))
-	mux.Handle("POST /api/v1/users/{id}/report", protected(reports.ReportTarget("user")))
-	mux.Handle("POST /api/v1/venues/{id}/report", protected(reports.ReportTarget("venue")))
-	mux.Handle("POST /api/v1/comments/{id}/report", protected(reports.ReportTarget("comment")))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/report", protected(reports.ReportTarget("event")))
+	mux.Method(http.MethodPost, "/api/v1/users/{id}/report", protected(reports.ReportTarget("user")))
+	mux.Method(http.MethodPost, "/api/v1/venues/{id}/report", protected(reports.ReportTarget("venue")))
+	mux.Method(http.MethodPost, "/api/v1/comments/{id}/report", protected(reports.ReportTarget("comment")))
 	// Notification inbox (dispatch arrives with the Phase 17 worker).
-	mux.Handle("GET /api/v1/notifications", protected(notes.List))
-	mux.Handle("POST /api/v1/notifications/{id}/read", protected(notes.Read))
-	mux.Handle("POST /api/v1/notifications/read-all", protected(notes.ReadAll))
+	mux.Method(http.MethodGet, "/api/v1/notifications", protected(notes.List))
+	mux.Method(http.MethodPost, "/api/v1/notifications/{id}/read", protected(notes.Read))
+	mux.Method(http.MethodPost, "/api/v1/notifications/read-all", protected(notes.ReadAll))
 	// Event reminders (record-only until the dispatch worker in Phase 17).
-	mux.Handle("POST /api/v1/events/{id}/reminders", protected(reminders.Create))
-	mux.Handle("DELETE /api/v1/events/{id}/reminders", protected(reminders.Delete))
-	mux.Handle("GET /api/v1/me/reminders", protected(reminders.My))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/reminders", protected(reminders.Create))
+	mux.Method(http.MethodDelete, "/api/v1/events/{id}/reminders", protected(reminders.Delete))
+	mux.Method(http.MethodGet, "/api/v1/me/reminders", protected(reminders.My))
 	// Venue editing (organizer-owned).
-	mux.Handle("PATCH /api/v1/venues/{id}", protected(ven.Update))
+	mux.Method(http.MethodPatch, "/api/v1/venues/{id}", protected(ven.Update))
 	// Media uploads: intents create assets + presigned URLs (idempotent so a
 	// retried intent doesn't duplicate assets); complete enqueues the worker job.
-	mux.Handle("POST /api/v1/media/upload-intents", protectedIdem(mediaHandle.CreateUploadIntent))
-	mux.Handle("POST /api/v1/media/{id}/complete", protected(mediaHandle.CompleteUpload))
+	mux.Method(http.MethodPost, "/api/v1/media/upload-intents", protectedIdem(mediaHandle.CreateUploadIntent))
+	mux.Method(http.MethodPost, "/api/v1/media/{id}/complete", protected(mediaHandle.CompleteUpload))
 	// Media reads are public (ready assets only, via RLS); deletes are owner-only.
-	mux.Handle("GET /api/v1/media/{id}", optional(mediaHandle.GetMedia))
-	mux.Handle("DELETE /api/v1/media/{id}", protected(mediaHandle.DeleteMedia))
+	mux.Method(http.MethodGet, "/api/v1/media/{id}", optional(mediaHandle.GetMedia))
+	mux.Method(http.MethodDelete, "/api/v1/media/{id}", protected(mediaHandle.DeleteMedia))
 	// Tickets & orders (Phase 14): tier management (organizer), public tier
 	// listing, atomic order reservation, order/ticket wallet, QR check-in.
-	mux.Handle("POST /api/v1/events/{id}/ticket-types", protectedIdem(orders.CreateTicketType))
-	mux.Handle("GET /api/v1/events/{id}/ticket-types", public(orders.ListTicketTypesPublic))
-	mux.Handle("GET /api/v1/events/{id}/ticket-types/manage", protected(orders.ListTicketTypes))
-	mux.Handle("PATCH /api/v1/events/{id}/ticket-types/{ticketTypeID}", protected(orders.UpdateTicketType))
-	mux.Handle("POST /api/v1/events/{id}/orders", protectedIdem(orders.CreateOrder))
-	mux.Handle("GET /api/v1/orders/{id}", protected(orders.GetOrder))
-	mux.Handle("GET /api/v1/me/orders", protected(orders.MyOrders))
-	mux.Handle("POST /api/v1/orders/{id}/cancel", protected(orders.CancelOrder))
-	mux.Handle("GET /api/v1/me/tickets", protected(orders.MyTickets))
-	mux.Handle("POST /api/v1/events/{id}/check-in", protected(orders.CheckIn))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/ticket-types", protectedIdem(orders.CreateTicketType))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}/ticket-types", public(orders.ListTicketTypesPublic))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}/ticket-types/manage", protected(orders.ListTicketTypes))
+	mux.Method(http.MethodPatch, "/api/v1/events/{id}/ticket-types/{ticketTypeID}", protected(orders.UpdateTicketType))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/orders", protectedIdem(orders.CreateOrder))
+	mux.Method(http.MethodGet, "/api/v1/orders/{id}", protected(orders.GetOrder))
+	mux.Method(http.MethodGet, "/api/v1/me/orders", protected(orders.MyOrders))
+	mux.Method(http.MethodPost, "/api/v1/orders/{id}/cancel", protected(orders.CancelOrder))
+	mux.Method(http.MethodGet, "/api/v1/me/tickets", protected(orders.MyTickets))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/check-in", protected(orders.CheckIn))
 	// Payment callback (Phase 15): provider POSTs outcomes here. Runs under the
 	// trusted 'service' role inside the request transaction so the order state
 	// change commits atomically.
-	mux.Handle("POST /webhooks/payments/chapa", service(payments.ChapaWebhook))
+	mux.Method(http.MethodPost, "/webhooks/payments/chapa", service(payments.ChapaWebhook))
 	// Offline delta (Phase 16): signed-in users pull the public catalog since a
 	// cursor. Per-user rows stay out of sync — the client re-fetches them via
 	// their own endpoints (private full refresh).
-	mux.Handle("GET /api/v1/sync", protected(syncHandlers.Pull))
+	mux.Method(http.MethodGet, "/api/v1/sync", protected(syncHandlers.Pull))
 	// Push device registry (Phase 17): register/deregister the caller's FCM
 	// tokens. Registration is idempotent (token upsert), so it's retry-safe.
-	mux.Handle("POST /api/v1/devices", protectedIdem(deviceHandlers.Register))
-	mux.Handle("GET /api/v1/me/devices", protected(deviceHandlers.List))
-	mux.Handle("DELETE /api/v1/devices/{id}", protected(deviceHandlers.Deregister))
+	mux.Method(http.MethodPost, "/api/v1/devices", protectedIdem(deviceHandlers.Register))
+	mux.Method(http.MethodGet, "/api/v1/me/devices", protected(deviceHandlers.List))
+	mux.Method(http.MethodDelete, "/api/v1/devices/{id}", protected(deviceHandlers.Deregister))
 	// Moments (Phase 18): community gallery on published events (public read,
 	// RSVP/ticket holders share), and the opt-in attendee directory.
-	mux.Handle("POST /api/v1/events/{id}/moments", protectedIdem(momentHandlers.Create))
-	mux.Handle("GET /api/v1/events/{id}/moments", public(momentHandlers.List))
-	mux.Handle("DELETE /api/v1/moments/{id}", protected(momentHandlers.Delete))
-	mux.Handle("GET /api/v1/events/{id}/attendees", public(momentHandlers.ListAttendees))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/moments", protectedIdem(momentHandlers.Create))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}/moments", public(momentHandlers.List))
+	mux.Method(http.MethodDelete, "/api/v1/moments/{id}", protected(momentHandlers.Delete))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}/attendees", public(momentHandlers.ListAttendees))
 	// Schedule (Phase 19): organizer-managed session slots, public read.
-	mux.Handle("POST /api/v1/events/{id}/schedule", protectedIdem(schedule.Create))
-	mux.Handle("GET /api/v1/events/{id}/schedule", public(schedule.List))
-	mux.Handle("PATCH /api/v1/schedule/{id}", protected(schedule.Update))
-	mux.Handle("DELETE /api/v1/schedule/{id}", protected(schedule.Delete))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/schedule", protectedIdem(schedule.Create))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}/schedule", public(schedule.List))
+	mux.Method(http.MethodPatch, "/api/v1/schedule/{id}", protected(schedule.Update))
+	mux.Method(http.MethodDelete, "/api/v1/schedule/{id}", protected(schedule.Delete))
 	// Q&A (Phase 19): attendee questions, votes, organizer pin/answer.
-	mux.Handle("POST /api/v1/events/{id}/questions", protected(questions.Create))
-	mux.Handle("GET /api/v1/events/{id}/questions", optional(questions.List))
-	mux.Handle("POST /api/v1/questions/{id}/upvote", protected(questions.Upvote))
-	mux.Handle("DELETE /api/v1/questions/{id}/upvote", protected(questions.RemoveUpvote))
-	mux.Handle("POST /api/v1/questions/{id}/pin", protected(questions.Pin))
-	mux.Handle("POST /api/v1/questions/{id}/answer", protected(questions.Answer))
+	mux.Method(http.MethodPost, "/api/v1/events/{id}/questions", protected(questions.Create))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}/questions", optional(questions.List))
+	mux.Method(http.MethodPost, "/api/v1/questions/{id}/upvote", protected(questions.Upvote))
+	mux.Method(http.MethodDelete, "/api/v1/questions/{id}/upvote", protected(questions.RemoveUpvote))
+	mux.Method(http.MethodPost, "/api/v1/questions/{id}/pin", protected(questions.Pin))
+	mux.Method(http.MethodPost, "/api/v1/questions/{id}/answer", protected(questions.Answer))
 	// Badges (Phase 20): the caller's earned milestone badges.
-	mux.Handle("GET /api/v1/users/me/badges", protected(badges.MyBadges))
+	mux.Method(http.MethodGet, "/api/v1/users/me/badges", protected(badges.MyBadges))
 	// Recap (Phase 20): the cached-or-regenerated event dashboard (public read).
-	mux.Handle("GET /api/v1/events/{id}/recap", public(recaps.Get))
+	mux.Method(http.MethodGet, "/api/v1/events/{id}/recap", public(recaps.Get))
 
 	// Local object provider: serve/persist raw objects for the dev/test blob
 	// URLs handed out as upload_url / cdn_url. Dev-only, no auth, no RLS.
 	if app.Config.MediaStorageProvider == "local" {
 		if local, ok := app.Storage.(*storage.Local); ok {
-			mux.HandleFunc("GET /media/objects/{key...}", local.ServeObject)
-			mux.Handle("PUT /media/objects/{key...}", local.StoreObject(app.Config.MediaMaxUploadBytes))
+			mux.Method(http.MethodGet, "/media/objects/*", http.HandlerFunc(local.ServeObject))
+			mux.Method(http.MethodPut, "/media/objects/*", local.StoreObject(app.Config.MediaMaxUploadBytes))
 		}
 	}
 
@@ -247,69 +267,46 @@ func New(app *api.Application) http.Handler {
 	admin := func(h http.HandlerFunc) http.Handler {
 		return middleware.RequireAdmin(app.Auth)(middleware.WithRole("admin")(middleware.SetRLS(h)))
 	}
-	mux.Handle("POST /api/v1/admin/organizer-applications/{id}/approve", admin(org.Approve))
-	mux.Handle("POST /api/v1/admin/organizer-applications/{id}/reject", admin(org.Reject))
-	mux.Handle("GET /api/v1/admin/organizer-applications", admin(adminHandlers.ListApplications))
-	mux.Handle("GET /api/v1/admin/reports", admin(adminHandlers.ListReports))
-	mux.Handle("GET /api/v1/admin/events", admin(adminHandlers.ListEvents))
-	mux.Handle("POST /api/v1/admin/reports/{id}/resolve", admin(adminHandlers.ResolveReport))
-	mux.Handle("POST /api/v1/admin/events/{id}/block", admin(adminHandlers.BlockEvent))
-	mux.Handle("POST /api/v1/admin/events/{id}/restore", admin(adminHandlers.RestoreEvent))
+	mux.Method(http.MethodPost, "/api/v1/admin/organizer-applications/{id}/approve", admin(org.Approve))
+	mux.Method(http.MethodPost, "/api/v1/admin/organizer-applications/{id}/reject", admin(org.Reject))
+	mux.Method(http.MethodGet, "/api/v1/admin/organizer-applications", admin(adminHandlers.ListApplications))
+	mux.Method(http.MethodGet, "/api/v1/admin/reports", admin(adminHandlers.ListReports))
+	mux.Method(http.MethodGet, "/api/v1/admin/events", admin(adminHandlers.ListEvents))
+	mux.Method(http.MethodPost, "/api/v1/admin/reports/{id}/resolve", admin(adminHandlers.ResolveReport))
+	mux.Method(http.MethodPost, "/api/v1/admin/events/{id}/block", admin(adminHandlers.BlockEvent))
+	mux.Method(http.MethodPost, "/api/v1/admin/events/{id}/restore", admin(adminHandlers.RestoreEvent))
 	// Admin organizers (Phase 34, slice 1): direct (non-apply) provisioning
 	// plus queue-independent listing/detail.
-	mux.Handle("GET /api/v1/admin/organizers", admin(adminHandlers.ListOrganizers))
-	mux.Handle("GET /api/v1/admin/organizers/{id}", admin(adminHandlers.GetOrganizer))
-	mux.Handle("POST /api/v1/admin/organizers", admin(adminHandlers.CreateOrganizer))
+	mux.Method(http.MethodGet, "/api/v1/admin/organizers", admin(adminHandlers.ListOrganizers))
+	mux.Method(http.MethodGet, "/api/v1/admin/organizers/{id}", admin(adminHandlers.GetOrganizer))
+	mux.Method(http.MethodPost, "/api/v1/admin/organizers", admin(adminHandlers.CreateOrganizer))
 	// Admin users directory (Phase 34, slice 2): spec §10 suspend/restore plus
 	// directory edits with the self-demote/suspend guard.
-	mux.Handle("GET /api/v1/admin/users", admin(adminHandlers.ListUsers))
-	mux.Handle("PATCH /api/v1/admin/users/{id}", admin(adminHandlers.UpdateUser))
-	mux.Handle("POST /api/v1/admin/users/{id}/suspend", admin(adminHandlers.SuspendUser))
-	mux.Handle("POST /api/v1/admin/users/{id}/restore", admin(adminHandlers.RestoreUser))
+	mux.Method(http.MethodGet, "/api/v1/admin/users", admin(adminHandlers.ListUsers))
+	mux.Method(http.MethodPatch, "/api/v1/admin/users/{id}", admin(adminHandlers.UpdateUser))
+	mux.Method(http.MethodPost, "/api/v1/admin/users/{id}/suspend", admin(adminHandlers.SuspendUser))
+	mux.Method(http.MethodPost, "/api/v1/admin/users/{id}/restore", admin(adminHandlers.RestoreUser))
 	// Admin venues (Phase 34, slice 3): directory (no active-only restriction —
 	// suspended venues stay visible) plus organizer-bound provisioning.
-	mux.Handle("GET /api/v1/admin/venues", admin(adminHandlers.ListVenues))
-	mux.Handle("POST /api/v1/admin/venues", admin(adminHandlers.CreateVenue))
+	mux.Method(http.MethodGet, "/api/v1/admin/venues", admin(adminHandlers.ListVenues))
+	mux.Method(http.MethodPost, "/api/v1/admin/venues", admin(adminHandlers.CreateVenue))
 	// Admin events (Phase 34, slice 4): detail, atomic create (organizer and
 	// venue resolve-or-create + publish), reassign organizer, edit-any, and the
 	// publish/cancel lifecycle pair.
-	mux.Handle("GET /api/v1/admin/events/{id}", admin(adminHandlers.GetEvent))
-	mux.Handle("POST /api/v1/admin/events", admin(adminHandlers.CreateEvent))
-	mux.Handle("PATCH /api/v1/admin/events/{id}/organizer", admin(adminHandlers.ReassignOrganizer))
-	mux.Handle("PATCH /api/v1/admin/events/{id}", admin(adminHandlers.UpdateEvent))
-	mux.Handle("POST /api/v1/admin/events/{id}/publish", admin(adminHandlers.PublishEvent))
-	mux.Handle("POST /api/v1/admin/events/{id}/cancel", admin(adminHandlers.CancelEvent))
+	mux.Method(http.MethodGet, "/api/v1/admin/events/{id}", admin(adminHandlers.GetEvent))
+	mux.Method(http.MethodPost, "/api/v1/admin/events", admin(adminHandlers.CreateEvent))
+	mux.Method(http.MethodPatch, "/api/v1/admin/events/{id}/organizer", admin(adminHandlers.ReassignOrganizer))
+	mux.Method(http.MethodPatch, "/api/v1/admin/events/{id}", admin(adminHandlers.UpdateEvent))
+	mux.Method(http.MethodPost, "/api/v1/admin/events/{id}/publish", admin(adminHandlers.PublishEvent))
+	mux.Method(http.MethodPost, "/api/v1/admin/events/{id}/cancel", admin(adminHandlers.CancelEvent))
 	// Admin analytics (Phase 33): dashboards read the rollup table only. Raw
 	// events stay worker-private (RLS), so these endpoints can never leak raw
 	// per-user behavior.
-	mux.Handle("GET /api/v1/admin/analytics/feature-usage", admin(analyticsHandlers.Usage))
-	mux.Handle("GET /api/v1/admin/analytics/funnels/event-creation", admin(analyticsHandlers.FunnelEventCreation))
-	mux.Handle("GET /api/v1/admin/analytics/funnels/organizer-application", admin(analyticsHandlers.FunnelOrganizerApplication))
-	mux.Handle("GET /api/v1/admin/analytics/onboarding", admin(analyticsHandlers.Onboarding))
-	mux.Handle("GET /api/v1/admin/analytics/daily-metrics", admin(analyticsHandlers.DailyMetrics))
+	mux.Method(http.MethodGet, "/api/v1/admin/analytics/feature-usage", admin(analyticsHandlers.Usage))
+	mux.Method(http.MethodGet, "/api/v1/admin/analytics/funnels/event-creation", admin(analyticsHandlers.FunnelEventCreation))
+	mux.Method(http.MethodGet, "/api/v1/admin/analytics/funnels/organizer-application", admin(analyticsHandlers.FunnelOrganizerApplication))
+	mux.Method(http.MethodGet, "/api/v1/admin/analytics/onboarding", admin(analyticsHandlers.Onboarding))
+	mux.Method(http.MethodGet, "/api/v1/admin/analytics/daily-metrics", admin(analyticsHandlers.DailyMetrics))
 
-	allowed := make(map[string]struct{}, len(app.Config.CORSAllowedOrigins))
-	for _, o := range app.Config.CORSAllowedOrigins {
-		allowed[o] = struct{}{}
-	}
-
-	// Count every completed request (method + status) at the outermost edge —
-	// outside RecoverPanic's 500 conversion and CORS short-circuits, but not
-	// inside LogRequest's redaction scope. /metrics scrapes are counted too,
-	// which is the normal Prometheus self-measurement behavior.
-	return metrics.Count(app.Metrics)(
-		middleware.RecoverPanic(app.Logger)(
-			middleware.RequestTimeout(15 * time.Second)(
-				middleware.CORS(allowed)(
-					middleware.SecureHeaders(
-						middleware.RequestID(
-							middleware.LogRequest(app.Logger)(
-								middleware.BeginRequestTx(app.DB, app.Logger)(mux),
-							),
-						),
-					),
-				),
-			),
-		),
-	)
+	return mux
 }
