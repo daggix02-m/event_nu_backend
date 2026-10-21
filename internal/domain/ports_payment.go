@@ -1,9 +1,17 @@
-// Package payments abstracts the ticket-checkout payment provider. The API
-// talks to a Provider (Chapa in production, noop in local dev/tests); the
-// authoritative money state is written by the provider's webhook handler.
-package payments
+package domain
 
-import "context"
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+)
+
+// Payment-gateway port (hexagonal slice 3, moved from the infrastructure
+// package): the core describes CHECKOUTS, VERIFY, and webhook-seal semantics;
+// chapa/noop adapters in package payments implement it. Type names keep their
+// original shape so the move is mechanical.
 
 // Normalized provider statuses returned by Verify. Provider-specific values
 // ("success", "failed", "pending", "authorized", ...) are mapped onto these.
@@ -42,12 +50,37 @@ type VerifyResult struct {
 	Currency    string
 }
 
-// Provider is a payment gateway integration.
-type Provider interface {
+// PaymentProvider is a payment gateway integration.
+type PaymentProvider interface {
 	// Name is the stable provider key persisted on the payment ledger.
 	Name() string
 	// Initialize opens a checkout and returns where to send the buyer.
 	Initialize(ctx context.Context, req InitializeRequest) (InitializeResult, error)
 	// Verify re-queries the provider for the authoritative transaction status.
 	Verify(ctx context.Context, providerRef string) (VerifyResult, error)
+}
+
+// SignatureValid verifies a webhook signature: HMAC-SHA256 of the raw request
+// body using the webhook secret, hex-encoded. The header may expose the
+// signature under several keys; any single matching value suffices. The
+// comparison is constant-time.
+func SignatureValid(secret string, body []byte, provided ...string) bool {
+	if secret == "" {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write(body)
+	expected := mac.Sum(nil)
+	expectedHex := make([]byte, hex.EncodedLen(len(expected)))
+	hex.Encode(expectedHex, expected)
+
+	for _, p := range provided {
+		if p == "" {
+			continue
+		}
+		if hmac.Equal([]byte(strings.TrimSpace(strings.ToLower(p))), expectedHex) {
+			return true
+		}
+	}
+	return false
 }

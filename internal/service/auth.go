@@ -43,31 +43,18 @@ func mustGenerateDummyHash() []byte {
 	return h
 }
 
-// userStore is the user-repository surface the auth service depends on, kept
-// as an interface so unit tests can stub lookups without a database.
-type userStore interface {
-	Create(ctx context.Context, email, passwordHash, username string) (*domain.User, error)
-	GetByEmail(ctx context.Context, email string) (*domain.User, error)
-	GetByID(ctx context.Context, id string) (*domain.User, error)
-	UpdateProfile(ctx context.Context, id string, username, bio, photoURL *string) (*domain.User, error)
-}
-
-// sessionStore is the session-repository surface AuthService depends on, kept
-// as an interface so unit tests can stub rotation/revocation without a
-// database.
-type sessionStore interface {
-	Create(ctx context.Context, s *domain.Session) error
-	ConsumeForRotation(ctx context.Context, refreshHash string) (*domain.Session, error)
-	Revoke(ctx context.Context, refreshHash string) error
-}
+// Authentication service: JWT access tokens, opaque refresh tokens, and
+// account state. Its persistence ports (domain.UserStore / domain.SessionStore)
+// live in package domain (hexagonal slice 1); concrete repositories satisfy
+// them by declaration (see internal/arch_test.go).
 
 type AuthService struct {
-	users    userStore
-	sessions sessionStore
+	users    domain.UserStore
+	sessions domain.SessionStore
 	config   config.Config
 }
 
-func NewAuthService(users userStore, sessions sessionStore, cfg config.Config) *AuthService {
+func NewAuthService(users domain.UserStore, sessions domain.SessionStore, cfg config.Config) *AuthService {
 	return &AuthService{users: users, sessions: sessions, config: cfg}
 }
 

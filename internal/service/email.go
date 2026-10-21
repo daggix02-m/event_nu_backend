@@ -11,20 +11,20 @@ import (
 
 	"github.com/daggix02-m/event_nu_backend/internal/config"
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
-	"github.com/daggix02-m/event_nu_backend/internal/repository"
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
 // EmailService owns code generation and outbox enqueueing. Sending itself is
-// done by the worker; handlers never block on an external email call.
+// done by the worker; handlers never block on an external email call. Its
+// persistence ports live in package domain (hexagonal slice 2).
 type EmailService struct {
-	outbox *repository.OutboxRepository
-	codes  *repository.EmailCodeRepository
-	users  *repository.UserRepository
+	outbox domain.EmailOutboxStore
+	codes  domain.EmailCodeStore
+	users  domain.UserVerificationStore
 	config config.Config
 }
 
-func NewEmailService(outbox *repository.OutboxRepository, codes *repository.EmailCodeRepository, users *repository.UserRepository, cfg config.Config) *EmailService {
+func NewEmailService(outbox domain.EmailOutboxStore, codes domain.EmailCodeStore, users domain.UserVerificationStore, cfg config.Config) *EmailService {
 	return &EmailService{outbox: outbox, codes: codes, users: users, config: cfg}
 }
 

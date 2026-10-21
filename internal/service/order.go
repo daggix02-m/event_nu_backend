@@ -8,14 +8,13 @@ import (
 	"time"
 
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
-	"github.com/daggix02-m/event_nu_backend/internal/repository"
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 	"github.com/daggix02-m/event_nu_backend/internal/validator"
 )
 
 // orderStore is the order-repository surface OrderService needs.
 type orderStore interface {
-	CreateOrder(ctx context.Context, userID, eventID string, inputs []repository.OrderItemInput) (*domain.Order, error)
+	CreateOrder(ctx context.Context, userID, eventID string, inputs []domain.OrderItemInput) (*domain.Order, error)
 	GetOrderByID(ctx context.Context, orderID string) (*domain.Order, error)
 	ListByUser(ctx context.Context, userID string, limit, offset int) ([]*domain.Order, error)
 	CountByUser(ctx context.Context, userID string) (int, error)
@@ -155,7 +154,7 @@ func (s *OrderService) UpdateTicketType(ctx context.Context, userID, eventID, ti
 
 // CreateOrder validates a purchasable event, then atomically reserves inventory
 // and creates the pending order. Unavailable lines abort the whole order.
-func (s *OrderService) CreateOrder(ctx context.Context, userID, eventID string, items []repository.OrderItemInput) (*domain.Order, error) {
+func (s *OrderService) CreateOrder(ctx context.Context, userID, eventID string, items []domain.OrderItemInput) (*domain.Order, error) {
 	if len(items) == 0 {
 		return nil, shared.NewAppError("validation_error", "An order must contain at least one ticket.", http.StatusUnprocessableEntity)
 	}
@@ -170,11 +169,11 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID, eventID string, 
 	order, err := s.orders.CreateOrder(ctx, userID, eventID, items)
 	if err != nil {
 		switch {
-		case errors.Is(err, repository.ErrTicketSoldOut):
+		case errors.Is(err, domain.ErrTicketSoldOut):
 			return nil, shared.NewAppError("ticket_sold_out", "One or more ticket types have sold out.", http.StatusConflict)
-		case errors.Is(err, repository.ErrTicketSalesClosed):
+		case errors.Is(err, domain.ErrTicketSalesClosed):
 			return nil, shared.NewAppError("sales_closed", "One or more ticket types are not on sale.", http.StatusConflict)
-		case errors.Is(err, repository.ErrOrderItemInvalid):
+		case errors.Is(err, domain.ErrOrderItemInvalid):
 			return nil, shared.NewAppError("invalid_items", "One or more ticket types are not available for this event.", http.StatusUnprocessableEntity)
 		default:
 			return nil, err
@@ -214,7 +213,7 @@ func (s *OrderService) CancelOrder(ctx context.Context, userID, orderID string) 
 		return nil, shared.NewAppError("forbidden", "You can only cancel your own orders.", http.StatusForbidden)
 	}
 	if err := s.orders.Cancel(ctx, userID, orderID); err != nil {
-		if errors.Is(err, repository.ErrOrderNotCancellable) {
+		if errors.Is(err, domain.ErrOrderNotCancellable) {
 			return nil, shared.NewAppError("order_not_cancellable", "Only pending orders can be cancelled.", http.StatusConflict)
 		}
 		return nil, err
@@ -228,7 +227,7 @@ func (s *OrderService) CancelOrder(ctx context.Context, userID, orderID string) 
 func (s *OrderService) ConfirmPaid(ctx context.Context, orderID, provider, providerRef string) (*domain.Order, []*domain.Ticket, error) {
 	order, tickets, err := s.orders.ConfirmPaid(ctx, orderID, provider, providerRef)
 	if err != nil {
-		if errors.Is(err, repository.ErrOrderAlreadyPaid) {
+		if errors.Is(err, domain.ErrOrderAlreadyPaid) {
 			return nil, nil, shared.NewAppError("order_already_paid", "This order has already been confirmed.", http.StatusConflict)
 		}
 		return nil, nil, err

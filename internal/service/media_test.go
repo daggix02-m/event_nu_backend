@@ -8,7 +8,6 @@ import (
 
 	"github.com/daggix02-m/event_nu_backend/internal/config"
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
-	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/storage"
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
@@ -73,7 +72,7 @@ func (s stubMediaStore) ListVariantsForMediaIDs(ctx context.Context, ids []strin
 }
 
 type stubObjectStore struct {
-	storage.ObjectStore
+	domain.ObjectStore
 	bucket     string
 	uploadURL  string
 	presignErr error
@@ -86,7 +85,7 @@ func (s stubObjectStore) PresignUpload(ctx context.Context, key, contentType str
 }
 func (s stubObjectStore) Delete(ctx context.Context, key string) error { return s.deleteErr }
 
-func newMediaService(store stubMediaStore, objects storage.ObjectStore) *MediaService {
+func newMediaService(store stubMediaStore, objects domain.ObjectStore) *MediaService {
 	cfg := config.Config{
 		MediaUploadExpiry:   time.Minute * 5,
 		MediaMaxUploadBytes: 10 * 1024 * 1024,

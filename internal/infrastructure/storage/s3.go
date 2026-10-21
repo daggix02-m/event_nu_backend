@@ -10,11 +10,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
 )
 
 // S3 is an S3-compatible ObjectStore (MinIO locally, Cloudflare R2 in
 // production). Keys live in a single bucket; variants are stored next to the
 // original under server-generated keys.
+// Compile-time proof that the repository adapter implements the core's
+// driven port (hexagonal: adapters depend on ports, never the reverse).
+var _ domain.ObjectStore = (*S3)(nil)
+
 type S3 struct {
 	client     *s3.Client
 	presign    *s3.PresignClient

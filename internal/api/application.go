@@ -6,6 +6,7 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/api/metrics"
 	"github.com/daggix02-m/event_nu_backend/internal/api/middleware"
 	"github.com/daggix02-m/event_nu_backend/internal/config"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/payments"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/storage"
 	"github.com/daggix02-m/event_nu_backend/internal/repository"
@@ -55,7 +56,7 @@ type Application struct {
 
 	// Storage backs the media pipeline (local files for dev/tests, S3/R2 for
 	// production). Exposed so handlers/workers can reach it when needed.
-	Storage storage.ObjectStore
+	Storage domain.ObjectStore
 
 	// Idempotency backs the client-retryable write middleware. Repositories
 	// read the request tx from context, so records share the guarded write's

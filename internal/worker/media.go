@@ -10,7 +10,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/config"
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/imaging"
-	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/storage"
 	"github.com/daggix02-m/event_nu_backend/internal/repository"
 	"github.com/daggix02-m/event_nu_backend/internal/service"
 )
@@ -33,10 +32,10 @@ type MediaConsumer struct {
 	logger *slog.Logger
 	cfg    config.Config
 	jobs   mediaJobStore
-	store  storage.ObjectStore
+	store  domain.ObjectStore
 }
 
-func NewMediaConsumer(logger *slog.Logger, cfg config.Config, jobs *repository.MediaRepository, store storage.ObjectStore) *MediaConsumer {
+func NewMediaConsumer(logger *slog.Logger, cfg config.Config, jobs *repository.MediaRepository, store domain.ObjectStore) *MediaConsumer {
 	return &MediaConsumer{logger: logger, cfg: cfg, jobs: jobs, store: store}
 }
 

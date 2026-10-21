@@ -11,6 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Compile-time proof that the repository adapter implements the core's
+// driven port (hexagonal: adapters depend on ports, never the reverse).
+var _ domain.EmailOutboxStore = (*OutboxRepository)(nil)
+
 type OutboxRepository struct {
 	pool *pgxpool.Pool
 }

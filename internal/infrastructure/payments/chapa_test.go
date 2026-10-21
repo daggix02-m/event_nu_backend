@@ -2,40 +2,14 @@ package payments
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
 )
-
-func TestSignatureValid(t *testing.T) {
-	secret := "webhook-secret"
-	body := []byte(`{"tx_ref":"abc","status":"success"}`)
-
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write(body)
-	good := hex.EncodeToString(mac.Sum(nil))
-
-	if !SignatureValid(secret, body, good) {
-		t.Fatal("expected matching signature to validate")
-	}
-	if !SignatureValid(secret, body, "junk", strings.ToUpper(good)) {
-		t.Fatal("case-insensitive signature should validate next to an invalid one")
-	}
-	if SignatureValid(secret, body, "junk") {
-		t.Fatal("mismatched signature must fail")
-	}
-	if SignatureValid(secret, []byte(`{"tx_ref":"other"}`), good) {
-		t.Fatal("signature over a different body must fail")
-	}
-	if SignatureValid("", body, good) {
-		t.Fatal("empty secret must never validate")
-	}
-}
 
 func TestFormatMajor(t *testing.T) {
 	cases := []struct {
@@ -87,7 +61,7 @@ func TestChapaInitializeStartsCheckout(t *testing.T) {
 	defer srv.Close()
 
 	p := NewChapa(srv.URL, "CHASECK_TEST-xyz")
-	res, err := p.Initialize(context.Background(), InitializeRequest{
+	res, err := p.Initialize(context.Background(), domain.InitializeRequest{
 		TxRef:       "order-uuid",
 		AmountMinor: 1250,
 		Currency:    "ETB",
@@ -127,7 +101,7 @@ func TestChapaInitializeRejectsFailure(t *testing.T) {
 		defer srv.Close()
 
 		p := NewChapa(srv.URL, "k")
-		if _, err := p.Initialize(context.Background(), InitializeRequest{TxRef: "x", AmountMinor: 100, Currency: "ETB"}); err == nil {
+		if _, err := p.Initialize(context.Background(), domain.InitializeRequest{TxRef: "x", AmountMinor: 100, Currency: "ETB"}); err == nil {
 			t.Fatal("expected error")
 		}
 	})
@@ -139,7 +113,7 @@ func TestChapaInitializeRejectsFailure(t *testing.T) {
 		defer srv.Close()
 
 		p := NewChapa(srv.URL, "k")
-		if _, err := p.Initialize(context.Background(), InitializeRequest{TxRef: "x", AmountMinor: 100, Currency: "ETB"}); err == nil {
+		if _, err := p.Initialize(context.Background(), domain.InitializeRequest{TxRef: "x", AmountMinor: 100, Currency: "ETB"}); err == nil {
 			t.Fatal("expected error")
 		}
 	})
@@ -160,20 +134,20 @@ func TestChapaVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify: %v", err)
 	}
-	if res.Status != StatusSuccess || res.AmountMinor != 1250 || res.Currency != "ETB" {
+	if res.Status != domain.StatusSuccess || res.AmountMinor != 1250 || res.Currency != "ETB" {
 		t.Errorf("result = %+v", res)
 	}
 }
 
 func TestNormalizeStatus(t *testing.T) {
 	cases := map[string]string{
-		"success":           StatusSuccess,
-		"failed":            StatusFailed,
-		"cancelled_by_user": StatusFailed,
-		"pending":           StatusPending,
-		"authorized":        StatusPending,
-		"something_unknown": StatusPending,
-		"":                  StatusPending,
+		"success":           domain.StatusSuccess,
+		"failed":            domain.StatusFailed,
+		"cancelled_by_user": domain.StatusFailed,
+		"pending":           domain.StatusPending,
+		"authorized":        domain.StatusPending,
+		"something_unknown": domain.StatusPending,
+		"":                  domain.StatusPending,
 	}
 	for in, want := range cases {
 		if got := normalizeStatus(in); got != want {

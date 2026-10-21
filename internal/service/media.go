@@ -10,7 +10,6 @@ import (
 
 	"github.com/daggix02-m/event_nu_backend/internal/config"
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
-	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/storage"
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
@@ -32,11 +31,11 @@ type mediaAssetStore interface {
 // variants and flips the asset to ready.
 type MediaService struct {
 	assets  mediaAssetStore
-	storage storage.ObjectStore
+	storage domain.ObjectStore
 	cfg     config.Config
 }
 
-func NewMediaService(assets mediaAssetStore, store storage.ObjectStore, cfg config.Config) *MediaService {
+func NewMediaService(assets mediaAssetStore, store domain.ObjectStore, cfg config.Config) *MediaService {
 	return &MediaService{assets: assets, storage: store, cfg: cfg}
 }
 

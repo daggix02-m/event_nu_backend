@@ -3,9 +3,6 @@ package payments
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
 )
 
 const (
@@ -27,7 +26,7 @@ const (
 // ChapaProvider talks to the Chapa payment gateway (https://developer.chapa.co).
 // Initialize POSTs to /transaction/initialize; Verify GETs
 // /transaction/verify/{tx_ref}; webhook authenticity is checked separately with
-// the webhook secret (see SignatureValid).
+// the webhook secret (see domain.SignatureValid).
 type ChapaProvider struct {
 	baseURL   string
 	secretKey string
@@ -72,7 +71,7 @@ type chapaInitResponse struct {
 	} `json:"data"`
 }
 
-func (p *ChapaProvider) Initialize(ctx context.Context, req InitializeRequest) (InitializeResult, error) {
+func (p *ChapaProvider) Initialize(ctx context.Context, req domain.InitializeRequest) (domain.InitializeResult, error) {
 	body, err := json.Marshal(chapaInitRequest{
 		Amount:      formatMajor(req.AmountMinor),
 		Currency:    req.Currency,
@@ -88,38 +87,38 @@ func (p *ChapaProvider) Initialize(ctx context.Context, req InitializeRequest) (
 		},
 	})
 	if err != nil {
-		return InitializeResult{}, fmt.Errorf("chapa init: encode body: %w", err)
+		return domain.InitializeResult{}, fmt.Errorf("chapa init: encode body: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/transaction/initialize", bytes.NewReader(body))
 	if err != nil {
-		return InitializeResult{}, fmt.Errorf("chapa init: build request: %w", err)
+		return domain.InitializeResult{}, fmt.Errorf("chapa init: build request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+p.secretKey)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
-		return InitializeResult{}, fmt.Errorf("chapa init: %w", err)
+		return domain.InitializeResult{}, fmt.Errorf("chapa init: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return InitializeResult{}, fmt.Errorf("chapa init: read response: %w", err)
+		return domain.InitializeResult{}, fmt.Errorf("chapa init: read response: %w", err)
 	}
 
 	var parsed chapaInitResponse
 	if resp.StatusCode >= 400 {
-		return InitializeResult{}, fmt.Errorf("chapa init: status %d: %s", resp.StatusCode, truncate(raw))
+		return domain.InitializeResult{}, fmt.Errorf("chapa init: status %d: %s", resp.StatusCode, truncate(raw))
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return InitializeResult{}, fmt.Errorf("chapa init: decode response: %w", err)
+		return domain.InitializeResult{}, fmt.Errorf("chapa init: decode response: %w", err)
 	}
 	if parsed.Status != "success" || parsed.Data.CheckoutURL == "" {
-		return InitializeResult{}, fmt.Errorf("chapa init: provider rejected checkout (%s)", parsed.Message)
+		return domain.InitializeResult{}, fmt.Errorf("chapa init: provider rejected checkout (%s)", parsed.Message)
 	}
 
-	return InitializeResult{
+	return domain.InitializeResult{
 		ProviderRef: req.TxRef,
 		RedirectURL: parsed.Data.CheckoutURL,
 	}, nil
@@ -136,33 +135,33 @@ type chapaVerifyResponse struct {
 	} `json:"data"`
 }
 
-func (p *ChapaProvider) Verify(ctx context.Context, providerRef string) (VerifyResult, error) {
+func (p *ChapaProvider) Verify(ctx context.Context, providerRef string) (domain.VerifyResult, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		p.baseURL+"/transaction/verify/"+providerRef, nil)
 	if err != nil {
-		return VerifyResult{}, fmt.Errorf("chapa verify: build request: %w", err)
+		return domain.VerifyResult{}, fmt.Errorf("chapa verify: build request: %w", err)
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+p.secretKey)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
-		return VerifyResult{}, fmt.Errorf("chapa verify: %w", err)
+		return domain.VerifyResult{}, fmt.Errorf("chapa verify: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return VerifyResult{}, fmt.Errorf("chapa verify: read response: %w", err)
+		return domain.VerifyResult{}, fmt.Errorf("chapa verify: read response: %w", err)
 	}
 
 	var parsed chapaVerifyResponse
 	if resp.StatusCode >= 400 {
-		return VerifyResult{}, fmt.Errorf("chapa verify: status %d: %s", resp.StatusCode, truncate(raw))
+		return domain.VerifyResult{}, fmt.Errorf("chapa verify: status %d: %s", resp.StatusCode, truncate(raw))
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return VerifyResult{}, fmt.Errorf("chapa verify: decode response: %w", err)
+		return domain.VerifyResult{}, fmt.Errorf("chapa verify: decode response: %w", err)
 	}
 
-	return VerifyResult{
+	return domain.VerifyResult{
 		Status:      normalizeStatus(parsed.Data.Status),
 		AmountMinor: parseMajor(parsed.Data.Amount),
 		Currency:    strings.ToUpper(parsed.Data.Currency),
@@ -244,11 +243,11 @@ func int64Pow10(n int) int64 {
 func normalizeStatus(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "success", "completed", "paid":
-		return StatusSuccess
+		return domain.StatusSuccess
 	case "failed", "cancelled", "cancelled_by_user", "abandoned", "expired":
-		return StatusFailed
+		return domain.StatusFailed
 	default:
-		return StatusPending
+		return domain.StatusPending
 	}
 }
 
@@ -260,29 +259,4 @@ func truncate(b []byte) string {
 	return string(b)
 }
 
-// SignatureValid verifies a Chapa webhook signature: HMAC-SHA256 of the raw
-// request body using the webhook secret, hex-encoded. Chapa sends the header
-// either as "Chapa-Signature" or "x-chapa-signature"; any single matching
-// value suffices. Comparison is constant-time.
-func SignatureValid(secret string, body []byte, provided ...string) bool {
-	if secret == "" {
-		return false
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write(body)
-	expected := mac.Sum(nil)
-	expectedHex := make([]byte, hex.EncodedLen(len(expected)))
-	hex.Encode(expectedHex, expected)
-
-	for _, p := range provided {
-		if p == "" {
-			continue
-		}
-		if hmac.Equal([]byte(strings.TrimSpace(strings.ToLower(p))), expectedHex) {
-			return true
-		}
-	}
-	return false
-}
-
-var _ Provider = (*ChapaProvider)(nil)
+var _ domain.PaymentProvider = (*ChapaProvider)(nil)

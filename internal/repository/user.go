@@ -18,9 +18,17 @@ type UserRepository struct {
 	pool *pgxpool.Pool
 }
 
+// Compile-time proof that the repository adapter implements the core's
+// driven port (hexagonal: adapters depend on ports, never the reverse).
+var _ domain.UserVerificationStore = (*UserRepository)(nil)
+
 func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
 	return &UserRepository{pool: pool}
 }
+
+// Compile-time proof that the repository adapter implements the core's
+// driven port (hexagonal: adapters depend on ports, never the reverse).
+var _ domain.UserStore = (*UserRepository)(nil)
 
 // q returns the request transaction (honoring RLS context) when active,
 // otherwise the pool.

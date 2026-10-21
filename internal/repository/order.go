@@ -14,20 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Repository-level sentinels for order states that need distinct API codes.
-var (
-	ErrTicketSoldOut       = errors.New("ticket_type_sold_out")
-	ErrTicketSalesClosed   = errors.New("ticket_type_sales_closed")
-	ErrOrderItemInvalid    = errors.New("invalid_order_items")
-	ErrOrderNotCancellable = errors.New("order_not_cancellable")
-	ErrOrderAlreadyPaid    = errors.New("order_already_paid")
-)
-
-// OrderItemInput is one requested line of an order under construction.
-type OrderItemInput struct {
-	TicketTypeID string
-	Quantity     int
-}
+// Order-state sentinels and domain.OrderItemInput live in package domain
+// (hexagonal slice 3).
 
 // OrderRepository manages orders, their items, issued tickets, and the
 // atomic reserve/release/check-in SQL helpers.
@@ -120,7 +108,7 @@ func (r *OrderRepository) selectOrderItems(ctx context.Context, q database.Queri
 // pending order + items in one transaction (the request tx when present).
 // Any unavailable line (sold out / sales closed / mismatched currency) aborts
 // the whole order; the reservation is rolled back with the tx.
-func (r *OrderRepository) CreateOrder(ctx context.Context, userID, eventID string, inputs []OrderItemInput) (*domain.Order, error) {
+func (r *OrderRepository) CreateOrder(ctx context.Context, userID, eventID string, inputs []domain.OrderItemInput) (*domain.Order, error) {
 	tx, owned, err := database.Tx(ctx, r.pool)
 	if err != nil {
 		return nil, err
@@ -141,25 +129,25 @@ func (r *OrderRepository) CreateOrder(ctx context.Context, userID, eventID strin
 			WHERE id = $1 AND event_id = $2`, in.TicketTypeID, eventID).
 			Scan(&tt.ID, &tt.EventID, &tt.Name, &tt.PriceMinor, &tt.Currency, &tt.SalesStart, &tt.SalesEnd, &tt.IsActive)
 		if err == pgx.ErrNoRows {
-			return nil, ErrOrderItemInvalid
+			return nil, domain.ErrOrderItemInvalid
 		}
 		if err != nil {
 			return nil, fmt.Errorf("load ticket type: %w", err)
 		}
 		if !tt.IsActive {
-			return nil, ErrTicketSalesClosed
+			return nil, domain.ErrTicketSalesClosed
 		}
 		now := time.Now()
 		if tt.SalesStart != nil && now.Before(*tt.SalesStart) {
-			return nil, ErrTicketSalesClosed
+			return nil, domain.ErrTicketSalesClosed
 		}
 		if tt.SalesEnd != nil && now.After(*tt.SalesEnd) {
-			return nil, ErrTicketSalesClosed
+			return nil, domain.ErrTicketSalesClosed
 		}
 		if currency == "" {
 			currency = tt.Currency
 		} else if currency != tt.Currency {
-			return nil, ErrOrderItemInvalid
+			return nil, domain.ErrOrderItemInvalid
 		}
 
 		var reserved bool
@@ -167,7 +155,7 @@ func (r *OrderRepository) CreateOrder(ctx context.Context, userID, eventID strin
 			return nil, fmt.Errorf("reserve inventory: %w", err)
 		}
 		if !reserved {
-			return nil, ErrTicketSoldOut
+			return nil, domain.ErrTicketSoldOut
 		}
 
 		lineSubtotal := tt.PriceMinor * int64(in.Quantity)
@@ -287,7 +275,7 @@ func (r *OrderRepository) Cancel(ctx context.Context, userID, orderID string) er
 		if serr != nil {
 			return shared.ErrNotFound
 		}
-		return ErrOrderNotCancellable
+		return domain.ErrOrderNotCancellable
 	}
 	if err != nil {
 		return fmt.Errorf("cancel order: %w", err)
@@ -336,7 +324,7 @@ func (r *OrderRepository) ConfirmPaid(ctx context.Context, orderID, provider, pr
 			if serr := tx.QueryRow(ctx, `SELECT status::text FROM orders WHERE id = $1`, orderID).Scan(&status); serr != nil {
 				return nil, nil, shared.ErrNotFound
 			}
-			return nil, nil, ErrOrderAlreadyPaid
+			return nil, nil, domain.ErrOrderAlreadyPaid
 		}
 		return nil, nil, fmt.Errorf("confirm paid: %w", err)
 	}
@@ -380,7 +368,7 @@ func (r *OrderRepository) ConfirmPaid(ctx context.Context, orderID, provider, pr
 // back to inventory (a failed payment holds no stock). Runs in a privileged
 // ('service') RLS context via the payment webhook. Idempotent: an order that is
 // already failed/cancelled is a no-op; a paid order (the webhook lost a race or
-// is duplicated) returns ErrOrderAlreadyPaid and its inventory is NOT released.
+// is duplicated) returns domain.ErrOrderAlreadyPaid and its inventory is NOT released.
 func (r *OrderRepository) FailPayment(ctx context.Context, orderID, provider, providerRef string) error {
 	tx, owned, err := database.Tx(ctx, r.pool)
 	if err != nil {
@@ -403,7 +391,7 @@ func (r *OrderRepository) FailPayment(ctx context.Context, orderID, provider, pr
 			return shared.ErrNotFound
 		}
 		if status == "paid" {
-			return ErrOrderAlreadyPaid
+			return domain.ErrOrderAlreadyPaid
 		}
 		return nil // already failed/cancelled — nothing to release
 	}

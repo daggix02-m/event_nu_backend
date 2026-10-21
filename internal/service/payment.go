@@ -8,8 +8,6 @@ import (
 
 	"github.com/daggix02-m/event_nu_backend/internal/config"
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
-	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/payments"
-	"github.com/daggix02-m/event_nu_backend/internal/repository"
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
@@ -36,7 +34,7 @@ type PaymentService struct {
 	orders        paymentOrderStore
 	payments      paymentLedgerStore
 	users         paymentUserStore
-	provider      payments.Provider
+	provider      domain.PaymentProvider
 	notify        Notifier
 	callbackURL   string // the provider POSTs outcomes here (this server's webhook)
 	returnURL     string // the buyer lands here after the provider checkout
@@ -44,7 +42,7 @@ type PaymentService struct {
 }
 
 func NewPaymentService(orders paymentOrderStore, payments paymentLedgerStore, users paymentUserStore,
-	provider payments.Provider, notify Notifier, cfg config.Config) *PaymentService {
+	provider domain.PaymentProvider, notify Notifier, cfg config.Config) *PaymentService {
 	return &PaymentService{
 		orders:        orders,
 		payments:      payments,
@@ -77,7 +75,7 @@ func (s *PaymentService) Initiate(ctx context.Context, order *domain.Order) (*do
 		email = u.Email
 	}
 
-	init, err := s.provider.Initialize(ctx, payments.InitializeRequest{
+	init, err := s.provider.Initialize(ctx, domain.InitializeRequest{
 		TxRef:       order.ID,
 		AmountMinor: order.TotalMinor,
 		Currency:    order.Currency,
@@ -123,7 +121,7 @@ type WebhookResult struct {
 // will retry them). Runs inside the webhook request transaction (privileged
 // 'service' role) so the order state change commits atomically.
 func (s *PaymentService) HandleWebhook(ctx context.Context, rawBody []byte, signatures ...string) (WebhookResult, error) {
-	if !payments.SignatureValid(s.webhookSecret, rawBody, signatures...) {
+	if !domain.SignatureValid(s.webhookSecret, rawBody, signatures...) {
 		return WebhookResult{}, shared.NewAppError("invalid_signature", "Webhook signature verification failed.", http.StatusUnauthorized)
 	}
 
@@ -140,9 +138,9 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, rawBody []byte, sign
 	}
 
 	switch verify.Status {
-	case payments.StatusSuccess:
+	case domain.StatusSuccess:
 		return s.applySuccess(ctx, txRef, rawBody)
-	case payments.StatusFailed:
+	case domain.StatusFailed:
 		return s.applyFailure(ctx, txRef, verify, rawBody)
 	default:
 		// pending/authorized — no state change yet; await a later event.
@@ -153,7 +151,7 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, rawBody []byte, sign
 func (s *PaymentService) applySuccess(ctx context.Context, txRef string, rawBody []byte) (WebhookResult, error) {
 	order, _, err := s.orders.ConfirmPaid(ctx, txRef, s.provider.Name(), txRef)
 	if err != nil {
-		if errors.Is(err, repository.ErrOrderAlreadyPaid) {
+		if errors.Is(err, domain.ErrOrderAlreadyPaid) {
 			return WebhookResult{OrderID: txRef, Status: "paid"}, nil // duplicate webhook — idempotent no-op
 		}
 		if errors.Is(err, shared.ErrNotFound) {
@@ -186,9 +184,9 @@ func (s *PaymentService) applySuccess(ctx context.Context, txRef string, rawBody
 	return WebhookResult{OrderID: order.ID, Status: "paid"}, nil
 }
 
-func (s *PaymentService) applyFailure(ctx context.Context, txRef string, verify payments.VerifyResult, rawBody []byte) (WebhookResult, error) {
+func (s *PaymentService) applyFailure(ctx context.Context, txRef string, verify domain.VerifyResult, rawBody []byte) (WebhookResult, error) {
 	if err := s.orders.FailPayment(ctx, txRef, s.provider.Name(), txRef); err != nil {
-		if errors.Is(err, repository.ErrOrderAlreadyPaid) {
+		if errors.Is(err, domain.ErrOrderAlreadyPaid) {
 			// The webhook lost a race with a success event: the payment is
 			// already confirmed — a contradictory failure event is ignored.
 			return WebhookResult{OrderID: txRef, Status: "paid"}, nil

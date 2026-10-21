@@ -20,44 +20,43 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/config"
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
-	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/payments"
 	"github.com/daggix02-m/event_nu_backend/internal/repository"
 	"github.com/daggix02-m/event_nu_backend/internal/service"
 )
 
 // ---- fake provider -------------------------------------------------------------
 
-// fakeProvider implements payments.Provider with scripted Initialize/Verify so
+// fakeProvider implements domain.PaymentProvider with scripted Initialize/Verify so
 // tests exercise the full order→checkout→webhook pipeline without a network.
 type fakeProvider struct {
 	mu      sync.Mutex
 	name    string
 	initErr error
-	verify  map[string]payments.VerifyResult
+	verify  map[string]domain.VerifyResult
 	init    int
 }
 
 func (f *fakeProvider) Name() string { return f.name }
 
-func (f *fakeProvider) Initialize(ctx context.Context, req payments.InitializeRequest) (payments.InitializeResult, error) {
+func (f *fakeProvider) Initialize(ctx context.Context, req domain.InitializeRequest) (domain.InitializeResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.init++
 	if f.initErr != nil {
-		return payments.InitializeResult{}, f.initErr
+		return domain.InitializeResult{}, f.initErr
 	}
-	return payments.InitializeResult{
+	return domain.InitializeResult{
 		ProviderRef: req.TxRef,
 		RedirectURL: "https://checkout.example/pay/" + req.TxRef,
 	}, nil
 }
 
-func (f *fakeProvider) Verify(ctx context.Context, txRef string) (payments.VerifyResult, error) {
+func (f *fakeProvider) Verify(ctx context.Context, txRef string) (domain.VerifyResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	v, ok := f.verify[txRef]
 	if !ok {
-		return payments.VerifyResult{}, fmt.Errorf("no verification for %s", txRef)
+		return domain.VerifyResult{}, fmt.Errorf("no verification for %s", txRef)
 	}
 	return v, nil
 }
@@ -188,7 +187,7 @@ func countNotifications(t *testing.T, h http.Handler, tok, ntype string) int {
 // ---- tests --------------------------------------------------------------------
 
 func TestPaymentInitAndWebhookSuccess(t *testing.T) {
-	fake := &fakeProvider{name: "chapa", verify: map[string]payments.VerifyResult{}}
+	fake := &fakeProvider{name: "chapa", verify: map[string]domain.VerifyResult{}}
 	_, h := fakePaymentApp(t, fake)
 
 	orgTok, _ := promoteOrganizer(t, h, "payo", fmt.Sprintf("Pay Org %d", time.Now().UnixNano()))
@@ -238,8 +237,8 @@ func TestPaymentInitAndWebhookSuccess(t *testing.T) {
 
 	// Signed success webhook: plays out from the provider's verify response.
 	body := fmt.Sprintf(`{"tx_ref":%q,"status":"successful"}`, order.ID)
-	fake.verify[order.ID] = payments.VerifyResult{
-		Status: payments.StatusSuccess, AmountMinor: 1000, Currency: "ETB",
+	fake.verify[order.ID] = domain.VerifyResult{
+		Status: domain.StatusSuccess, AmountMinor: 1000, Currency: "ETB",
 	}
 	if rec = doSignedWebhook(t, h, body, signWebhook(body)); rec.Code != http.StatusOK {
 		t.Fatalf("webhook: expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -284,7 +283,7 @@ func TestPaymentInitAndWebhookSuccess(t *testing.T) {
 }
 
 func TestPaymentWebhookRejectsTamperedAndUnknown(t *testing.T) {
-	fake := &fakeProvider{name: "chapa", verify: map[string]payments.VerifyResult{}}
+	fake := &fakeProvider{name: "chapa", verify: map[string]domain.VerifyResult{}}
 	_, h := fakePaymentApp(t, fake)
 
 	body := `{"tx_ref":"00000000-0000-0000-0000-000000000001","status":"successful"}`
@@ -306,12 +305,12 @@ func TestPaymentWebhookRejectsTamperedAndUnknown(t *testing.T) {
 }
 
 func TestPaymentWebhookUnknownOrderIsNotFound(t *testing.T) {
-	fake := &fakeProvider{name: "chapa", verify: map[string]payments.VerifyResult{}}
+	fake := &fakeProvider{name: "chapa", verify: map[string]domain.VerifyResult{}}
 	_, h := fakePaymentApp(t, fake)
 
 	unknown := "00000000-0000-0000-0000-00000000dead"
 	body := fmt.Sprintf(`{"tx_ref":%q,"status":"successful"}`, unknown)
-	fake.verify[unknown] = payments.VerifyResult{Status: payments.StatusSuccess, AmountMinor: 100, Currency: "ETB"}
+	fake.verify[unknown] = domain.VerifyResult{Status: domain.StatusSuccess, AmountMinor: 100, Currency: "ETB"}
 
 	if rec := doSignedWebhook(t, h, body, signWebhook(body)); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown order: expected 404, got %d: %s", rec.Code, rec.Body.String())
@@ -319,7 +318,7 @@ func TestPaymentWebhookUnknownOrderIsNotFound(t *testing.T) {
 }
 
 func TestPaymentFailureReleasesInventoryAndLedgers(t *testing.T) {
-	fake := &fakeProvider{name: "chapa", verify: map[string]payments.VerifyResult{}}
+	fake := &fakeProvider{name: "chapa", verify: map[string]domain.VerifyResult{}}
 	_, h := fakePaymentApp(t, fake)
 
 	orgTok, _ := promoteOrganizer(t, h, "payf", fmt.Sprintf("PayF Org %d", time.Now().UnixNano()))
@@ -339,8 +338,8 @@ func TestPaymentFailureReleasesInventoryAndLedgers(t *testing.T) {
 	// Failed webhook (authoritative from verify) flips the order and releases
 	// the held inventory unit.
 	body := fmt.Sprintf(`{"tx_ref":%q,"status":"failed"}`, order.ID)
-	fake.verify[order.ID] = payments.VerifyResult{
-		Status: payments.StatusFailed, AmountMinor: 1000, Currency: "ETB",
+	fake.verify[order.ID] = domain.VerifyResult{
+		Status: domain.StatusFailed, AmountMinor: 1000, Currency: "ETB",
 	}
 	if rec = doSignedWebhook(t, h, body, signWebhook(body)); rec.Code != http.StatusOK {
 		t.Fatalf("failed webhook: expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -367,7 +366,7 @@ func TestPaymentFailureReleasesInventoryAndLedgers(t *testing.T) {
 }
 
 func TestPaymentInitFailureRollsBackOrderAndReservation(t *testing.T) {
-	fake := &fakeProvider{name: "chapa", verify: map[string]payments.VerifyResult{}, initErr: fmt.Errorf("provider down")}
+	fake := &fakeProvider{name: "chapa", verify: map[string]domain.VerifyResult{}, initErr: fmt.Errorf("provider down")}
 	_, h := fakePaymentApp(t, fake)
 
 	orgTok, _ := promoteOrganizer(t, h, "payx", fmt.Sprintf("PayX Org %d", time.Now().UnixNano()))

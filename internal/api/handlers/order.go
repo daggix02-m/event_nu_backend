@@ -7,7 +7,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/api/dto"
 	"github.com/daggix02-m/event_nu_backend/internal/api/middleware"
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
-	"github.com/daggix02-m/event_nu_backend/internal/repository"
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
@@ -29,9 +28,9 @@ func (h *OrderHandlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		h.app.ClientError(w, r, http.StatusUnprocessableEntity, "validation_error", "An order must contain at least one ticket.")
 		return
 	}
-	items := make([]repository.OrderItemInput, 0, len(req.Items))
+	items := make([]domain.OrderItemInput, 0, len(req.Items))
 	for _, it := range req.Items {
-		items = append(items, repository.OrderItemInput{
+		items = append(items, domain.OrderItemInput{
 			TicketTypeID: strings.TrimSpace(it.TicketTypeID),
 			Quantity:     it.Quantity,
 		})

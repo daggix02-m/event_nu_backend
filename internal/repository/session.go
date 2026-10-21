@@ -20,6 +20,10 @@ func NewSessionRepository(pool *pgxpool.Pool) *SessionRepository {
 	return &SessionRepository{pool: pool}
 }
 
+// Compile-time proof that the repository adapter implements the core's
+// driven port (hexagonal: adapters depend on ports, never the reverse).
+var _ domain.SessionStore = (*SessionRepository)(nil)
+
 // q returns the request transaction (honoring RLS context) when active,
 // otherwise the pool.
 func (r *SessionRepository) q(ctx context.Context) database.Querier {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
 	"github.com/daggix02-m/event_nu_backend/internal/infrastructure/database"
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 	"github.com/jackc/pgx/v5"
@@ -15,6 +16,10 @@ import (
 type EmailCodeRepository struct {
 	pool *pgxpool.Pool
 }
+
+// Compile-time proof that the repository adapter implements the core's
+// driven ports (hexagonal: adapters depend on ports, never the reverse).
+var _ domain.EmailCodeStore = (*EmailCodeRepository)(nil)
 
 func NewEmailCodeRepository(pool *pgxpool.Pool) *EmailCodeRepository {
 	return &EmailCodeRepository{pool: pool}

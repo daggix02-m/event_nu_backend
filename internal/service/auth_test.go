@@ -21,7 +21,7 @@ func testConfig() config.Config {
 	}
 }
 
-// stubUserStore implements service.userStore with a scripted email lookup so
+// stubUserStore implements domain.UserStore with a scripted email lookup so
 // login can be tested without a database.
 type stubUserStore struct {
 	byEmail func(email string) (*domain.User, error)
@@ -370,8 +370,8 @@ func TestLoginPropagatesStoreError(t *testing.T) {
 	}
 }
 
-// stubSessionStore implements sessionStore with scripted methods so refresh
-// rotation and logout can be tested without a database.
+// stubSessionStore implements domain.SessionStore with scripted methods so
+// refresh rotation and logout can be tested without a database.
 type stubSessionStore struct {
 	onConsume func(hash string) (*domain.Session, error)
 	onCreate  func(s *domain.Session) error

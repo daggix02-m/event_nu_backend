@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/daggix02-m/event_nu_backend/internal/repository"
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
 )
 
 // Sync domains served by GET /api/v1/sync. This is the public-discovery
@@ -91,10 +91,10 @@ type domainPull struct {
 
 // SyncService aggregates per-domain deltas into one cursor-based response.
 type SyncService struct {
-	repo *repository.SyncRepository
+	repo domain.SyncStore
 }
 
-func NewSyncService(repo *repository.SyncRepository) *SyncService {
+func NewSyncService(repo domain.SyncStore) *SyncService {
 	return &SyncService{repo: repo}
 }
 

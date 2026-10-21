@@ -13,7 +13,13 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/daggix02-m/event_nu_backend/internal/domain"
 )
+
+// Compile-time proof that the repository adapter implements the core's
+// driven port (hexagonal: adapters depend on ports, never the reverse).
+var _ domain.ObjectStore = (*Local)(nil)
 
 // Local is a filesystem-backed ObjectStore for development and tests. Objects
 // live under dir/<key>; PublicReadURL points at the API's /media/objects route
