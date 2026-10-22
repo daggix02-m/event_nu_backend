@@ -1,0 +1,1242 @@
+# Event Nu API — OpenAPI 3.0.3, major version 1.
+#
+# Scope note: covers the AUTH + EVENTS + COMMERCE (orders, tickets,
+# payments) domains. Other domains (comments, RSVPs, media, sync, ...)
+# follow the same conventions and are added incrementally.
+#
+# Conventions (verified against the code, do not edit aspirationally):
+#   - Every success body is wrapped:  {"data": <payload>}
+#   - Every error body is wrapped:    {"error": {"code": "...", "message": "..."}}
+#   - List responses add "pagination": {"page","limit","total","has_next"}
+#   - Client-retryable writes accept a UUID "Idempotency-Key" request header.
+#   - Auth: Bearer JWT access token. Admin re-verifies the caller's role from
+#     the database inside every request transaction.
+#   - Unknown JSON request fields are rejected (DisallowUnknownFields),
+#     bodies are capped at 1 MiB.
+
+openapi: 3.0.3
+info:
+  title: Event Nu API
+  version: 1.0.0
+  description: |
+    Auth and events domain of the Event Nu backend. Reserved route
+    conventions: all endpoints live under `/api/v1`; the gRPC transport
+    (internal only) is a separate contract (`proto/eventnu/v1/events.proto`).
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Events
+  - name: Commerce
+  - name: Reference data
+  - name: Webhooks
+
+paths:
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a user
+      description: |
+        Rate-limited per IP and per body email (default 5 per 1h each).
+        Enqueues welcome and verification emails as a side effect.
+        The new user is logged in immediately (tokens in the response).
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: Registered; session tokens returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in
+      description: |
+        Rate-limited per IP and per account (default 20 per 5m each).
+        Unknown-email and wrong-password logins perform identical bcrypt
+        work, so a 401 reveals nothing about account existence.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Session tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '401':
+          description: Invalid email or password (`invalid_credentials`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate a refresh token
+      description: Rate-limited per IP (default 30 per 5m).
+      operationId: refresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: New session tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke a refresh token
+      operationId: logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, example: logged_out }
+
+  /api/v1/auth/verify:
+    post:
+      tags: [Auth]
+      summary: Redeem an email verification code
+      description: |
+        Body is the 6-digit code from the verification email
+        (TTL 24h, max 5 attempts). The code is never embedded in a URL.
+        Rate-limited per IP (default 20 per 1h).
+      operationId: verifyEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        '200':
+          description: Verified
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      verified: { type: boolean }
+        '400':
+          description: Missing/malformed code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/v1/users/me:
+    get:
+      tags: [Users]
+      summary: The caller's profile
+      security: [{ bearerAuth: [] }]
+      operationId: getMyProfile
+      responses:
+        '200':
+          description: The profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Users]
+      summary: Edit the caller's profile
+      description: |
+        Every field is optional; an empty body (all nil) is rejected so a
+        PATCH is never a silent no-op. Email changes are out of scope.
+      security: [{ bearerAuth: [] }]
+      operationId: updateMyProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateRequest'
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/events:
+    get:
+      tags: [Events]
+      summary: List published events (public)
+      description: |
+        Anonymous-visible catalog; optional bearer auth populates the
+        per-user like/save state in each item. RLS gates visibility, so
+        drafts and blocked events never leak.
+      operationId: listEvents
+      parameters:
+        - name: q
+          in: query
+          description: Full-text filter over title + description
+          schema: { type: string }
+        - name: category
+          in: query
+          description: Category id
+          schema: { type: string, format: uuid }
+        - name: date_from
+          in: query
+          description: Start-time window lower bound (RFC3339)
+          schema: { type: string, format: date-time }
+        - name: date_to
+          in: query
+          description: Start-time window upper bound (RFC3339)
+          schema: { type: string, format: date-time }
+        - name: lat
+          in: query
+          description: Latitude; combined with `lng` and `radius` (all three required together).
+          schema: { type: number, format: double }
+        - name: lng
+          in: query
+          description: Longitude; combined with `lat` and `radius`.
+          schema: { type: number, format: double }
+        - name: radius
+          in: query
+          description: Proximity radius in km, > 0; combined with `lat` and `lng`.
+          schema: { type: number, format: double }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPage'
+        '400':
+          description: '`bad_request` — invalid date window, or `lat`/`lng`/`radius` given incompletely.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags: [Events]
+      summary: Create a draft event
+      description: |
+        Requires the caller to be an approved organizer. New events start
+        in status `draft`. Idempotent via `Idempotency-Key` so a retried
+        submit cannot duplicate the event.
+      security: [{ bearerAuth: [] }]
+      operationId: createEvent
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventInput'
+      responses:
+        '201':
+          description: Created draft
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`forbidden` — caller is not an approved organizer.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/events/{id}:
+    get:
+      tags: [Events]
+      summary: Event detail (public)
+      description: Optional bearer auth populates `liked_by_me` / `saved_by_me`.
+      operationId: getEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The event
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Event' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Events]
+      summary: Update the caller's event
+      description: Full replace of the editable fields (same body as create).
+      security: [{ bearerAuth: [] }]
+      operationId: updateEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventInput'
+      responses:
+        '200':
+          description: Updated event
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: '`forbidden` — event belongs to another organizer.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/events/{id}/publish:
+    post:
+      tags: [Events]
+      summary: Publish the caller's event
+      security: [{ bearerAuth: [] }]
+      operationId: publishEvent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The now-published event
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/me/events:
+    get:
+      tags: [Events]
+      summary: List the caller's organizer events
+      description: Includes drafts. `status` filters by lifecycle value; unknown
+        values simply match nothing.
+      security: [{ bearerAuth: [] }]
+      operationId: listMyEvents
+      parameters:
+        - name: status
+          in: query
+          description: Lifecycle filter (e.g. `draft`, `published`); empty = all.
+          schema: { type: string }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPage'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/events/{id}/ticket-types:
+    post:
+      tags: [Commerce]
+      summary: Create a ticket tier
+      description: |
+        Requires the caller to be the event's approved active organizer.
+        Price is expressed in the currency's minor unit (the API is
+        unit-agnostic and never interprets the scale).
+        Idempotent via `Idempotency-Key`.
+      security: [{ bearerAuth: [] }]
+      operationId: createTicketType
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event id
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketTypeInput'
+      responses:
+        '201':
+          description: Created tier
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/TicketType' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    get:
+      tags: [Commerce]
+      summary: List active ticket tiers (public)
+      description: |
+        Public read: returns **active** tiers only, with computed
+        `sold_out` and `sales_open` flags evaluated server-side at read time.
+      operationId: listPublicTicketTypes
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event id
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Active tiers with availability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketTypeList'
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/events/{id}/ticket-types/manage:
+    get:
+      tags: [Commerce]
+      summary: List all ticket tiers (organizer view)
+      description: |
+        Requires the caller to be the event's approved active organizer;
+        includes inactive tiers.
+      security: [{ bearerAuth: [] }]
+      operationId: listTicketTypesManage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event id
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: All tiers with availability
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketTypeList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/events/{id}/ticket-types/{ticketTypeID}:
+    patch:
+      tags: [Commerce]
+      summary: Update a ticket tier
+      description: |
+        **Full-snapshot PATCH**: every listed field carries the value to
+        persist; `null` clears a nullable field — there is no "keep" sentinel.
+        `name` cannot be null (validation error). Owner-organizer only.
+      security: [{ bearerAuth: [] }]
+      operationId: updateTicketType
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event id
+          schema: { type: string, format: uuid }
+        - name: ticketTypeID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketTypeUpdate'
+      responses:
+        '200':
+          description: Updated tier
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/TicketType' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/events/{id}/orders:
+    post:
+      tags: [Commerce]
+      summary: Create an order and start payment
+      description: |
+        Atomically reserves inventory and creates a `pending` order. When a
+        payment provider is configured, the response also carries
+        `payment.redirect_url` — the buyer goes there to pay; the order is
+        confirmed by the provider's webhook afterwards. With
+        `PAYMENT_PROVIDER=noop`, `payment` is absent and the order stays
+        pending. Idempotent via `Idempotency-Key` so a retried submit cannot
+        double-reserve inventory.
+      security: [{ bearerAuth: [] }]
+      operationId: createOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event id
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreateRequest'
+      responses:
+        '201':
+          description: Pending order (plus checkout redirect when a provider is configured)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: |
+            `ticket_sold_out` or `sales_closed` — one or more tiers in the
+            order are sold out or not currently on sale.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: |
+            `validation_error` (empty order, quantity < 1) or
+            `invalid_items` (a tier is not available for this event).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/orders/{id}:
+    get:
+      tags: [Commerce]
+      summary: Order detail
+      description: Visible to the order's owner (RLS-gated).
+      security: [{ bearerAuth: [] }]
+      operationId: getOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/me/orders:
+    get:
+      tags: [Commerce]
+      summary: The caller's orders (paginated)
+      security: [{ bearerAuth: [] }]
+      operationId: myOrders
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPage'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/orders/{id}/cancel:
+    post:
+      tags: [Commerce]
+      summary: Cancel the caller's order
+      description: |
+        Only `pending` orders can be cancelled (`order_not_cancellable`
+        otherwise); cancelling releases reserved inventory.
+      security: [{ bearerAuth: [] }]
+      operationId: cancelOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The cancelled order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: '`order_not_cancellable` — order is not pending.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/me/tickets:
+    get:
+      tags: [Commerce]
+      summary: The caller's tickets
+      description: |
+        Non-paginated list — the endpoint always returns every ticket of the
+        caller. Each ticket carries a server-signed HMAC QR payload for
+        on-site verification.
+      security: [{ bearerAuth: [] }]
+      operationId: myTickets
+      responses:
+        '200':
+          description: All caller tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Ticket' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/events/{id}/check-in:
+    post:
+      tags: [Commerce]
+      summary: Check in a scanned ticket QR
+      description: |
+        Caller must be the event's organizer. Send the **entire** scanned QR
+        payload back (`ticket_id`, `event_id`, `issued_at`, `hmac`) — the
+        server recomputes the HMAC (`TICKET_QR_SECRET`) and rejects tampered
+        codes (`invalid_code`). Duplicate scans yield `already_checked_in`
+        (409). The response carries no attendee PII.
+      security: [{ bearerAuth: [] }]
+      operationId: checkInTicket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event id (must match the QR payload's event_id)
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckInRequest'
+      responses:
+        '200':
+          description: Admission confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/CheckInResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '`invalid_code` — no matching ticket.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: '`already_checked_in`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: '`invalid_code` — malformed or tampered payload.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /webhooks/payments/chapa:
+    post:
+      tags: [Webhooks]
+      summary: Chapa payment webhook
+      description: |
+        Provider-facing (no user auth). Chapa POSTs its native JSON payload
+        here; the body is capped at 16 KiB and must carry an HMAC-SHA256
+        signature of the raw body in the `Chapa-Signature` **or**
+        `X-Chapa-Signature` header. On success the server resolves the
+        transaction reference and re-verifies the payment server-side with
+        Chapa, transitioning the order (`pending` → `paid` or `failed`;
+        `paid` issues the payments tickets). Replays and duplicate
+        confirmations are idempotent no-ops (200).
+      operationId: chapaWebhook
+      parameters:
+        - name: Chapa-Signature
+          in: header
+          required: false
+          description: |
+            HMAC-SHA256 of the raw body;
+            `X-Chapa-Signature` is accepted equivalently.
+          schema: { type: string }
+      requestBody:
+        required: true
+        description: |
+          Chapa's native webhook JSON (the server requires the provider's
+          transaction reference). Kept schema-less deliberately — the
+          authoritative shape is Chapa's webhook specification.
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          description: |
+            Accepted, including duplicate/replay idempotent no-op. No body.
+        '400':
+          description: '`invalid_payload` — missing transaction reference, or body over 16 KiB.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: '`invalid_signature` — HMAC verification failed.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: '`order_not_found` — the reference does not resolve to an order.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/venues:
+    get:
+      tags: [Reference data]
+      summary: List venues (public)
+      operationId: listVenues
+      responses:
+        '200':
+          description: Venues
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Venue' }
+
+  /api/v1/categories:
+    get:
+      tags: [Reference data]
+      summary: List event categories (public)
+      operationId: listCategories
+      responses:
+        '200':
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Page index, starting at 1 (default 1)
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      description: Items per page (default 20, max 100)
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: UUID key for client-retryable writes; a repeated key replays
+        the stored result instead of performing the write twice.
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthorized:
+      description: Missing, expired, or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: The caller lacks permission for this resource
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No such resource, or the RLS policy hides it (both render as 404)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Uniqueness conflict (e.g. email or username already taken)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: |
+        `too_many_requests` with a `Retry-After` header. The body is
+        deliberately identical for every kind of limit, so it reveals
+        nothing about account existence.
+      headers:
+        Retry-After:
+          description: Seconds until the window resets
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: '`validation_error` (422) or generic `bad_request` (400)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: forbidden
+            message:
+              type: string
+
+    # Stable error codes seen in the auth/events domain: invalid_credentials,
+    # forbidden, not_found, conflict, too_many_requests, validation_error,
+    # bad_request, internal_error.
+    # Codes are fixed per-endpoint above; no global enum until every path's
+    # codes have been audited.
+
+    RegisterRequest:
+      type: object
+      required: [email, password, username]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 72 }
+        username: { type: string, minLength: 3, maxLength: 32 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        username: { type: string }
+        bio: { type: string }
+        photo_url: { type: string }
+        role: { type: string, enum: [user, admin] }
+        is_verified: { type: boolean }
+        created_at: { type: string, format: date-time }
+        onboarding_completed: { type: boolean }
+
+    ProfileUpdateRequest:
+      type: object
+      description: At least one field must be present (all-nil bodies are rejected).
+      minProperties: 1
+      properties:
+        username: { type: string, minLength: 3, maxLength: 32 }
+        bio: { type: string }
+        photo_url: { type: string }
+
+    AuthSessionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [user, access_token, refresh_token, expires_in_seconds]
+          properties:
+            user: { $ref: '#/components/schemas/User' }
+            access_token: { type: string }
+            refresh_token: { type: string }
+            expires_in_seconds: { type: integer, format: int64 }
+
+    PaginationMeta:
+      type: object
+      required: [page, limit, total, has_next]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        has_next: { type: boolean }
+
+    EventInput:
+      type: object
+      required: [title, starts_at]
+      description: |
+        The full field set for create and update (PATCH replaces all
+        editable fields). `starts_at`/`ends_at` are RFC3339 strings.
+        `action_type` defaults to `open_entry` server-side when omitted
+        on create; update bodies pass it explicitly.
+      properties:
+        venue_id: { type: string, format: uuid, nullable: true }
+        category_id: { type: string, format: uuid, nullable: true }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 5000 }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time, nullable: true }
+        price_is_free: { type: boolean }
+        price_display: { type: string }
+        action_type: { type: string, example: open_entry }
+        action_target: { type: string }
+        max_attendees: { type: integer, minimum: 1, nullable: true }
+        poster_media_id: { type: string, format: uuid, nullable: true }
+        teaser_media_id: { type: string, format: uuid, nullable: true }
+
+    Event:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizer_id: { type: string, format: uuid }
+        venue_id: { type: string, format: uuid, nullable: true }
+        category_id: { type: string, format: uuid, nullable: true }
+        title: { type: string }
+        description: { type: string }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time, nullable: true }
+        price_is_free: { type: boolean }
+        price_display: { type: string }
+        action_type: { type: string }
+        status: { type: string, example: draft }
+        moderation_status: { type: string }
+        max_attendees: { type: integer, nullable: true }
+        like_count: { type: integer }
+        liked_by_me: { type: boolean }
+        saved_by_me: { type: boolean }
+        saved_folder_id: { type: string, format: uuid, nullable: true }
+        poster_url: { type: string }
+        teaser_url: { type: string }
+        created_at: { type: string, format: date-time }
+
+    EventPage:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Event' }
+        pagination: { $ref: '#/components/schemas/PaginationMeta' }
+
+    Venue:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        address: { type: string }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        city: { type: string }
+        country_code: { type: string }
+        status: { type: string }
+
+    # --- Commerce (orders, tickets, payments) ---
+
+    TicketTypeInput:
+      type: object
+      required: [name, price_minor]
+      description: |
+        Create payload for a ticket tier. `price_minor` is the price in the
+        currency's minor unit (>= 0; free tiers are price_minor 0).
+        `currency` is a 3-letter code when present.
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 2000, nullable: true }
+        price_minor: { type: integer, minimum: 0 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        quantity_total: { type: integer, minimum: 1, nullable: true }
+        sales_start: { type: string, format: date-time, nullable: true }
+        sales_end: { type: string, format: date-time, nullable: true }
+
+    TicketTypeUpdate:
+      type: object
+      required: [name, price_minor, is_active]
+      description: |
+        Full-snapshot update: every listed field is persisted as given;
+        `null` clears a nullable field (no "keep" sentinel).
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 2000, nullable: true }
+        price_minor: { type: integer, minimum: 0 }
+        quantity_total: { type: integer, minimum: 1, nullable: true }
+        sales_start: { type: string, format: date-time, nullable: true }
+        sales_end: { type: string, format: date-time, nullable: true }
+        is_active: { type: boolean }
+
+    TicketType:
+      type: object
+      description: Wire shape of a tier plus availability computed at read time.
+      properties:
+        id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        price_minor: { type: integer, minimum: 0 }
+        currency: { type: string }
+        quantity_total: { type: integer, nullable: true }
+        quantity_sold: { type: integer }
+        sales_start: { type: string, format: date-time, nullable: true }
+        sales_end: { type: string, format: date-time, nullable: true }
+        is_active: { type: boolean }
+        sold_out: { type: boolean }
+        sales_open: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TicketTypeList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/TicketType' }
+
+    OrderCreateRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          description: At least one item; each quantity must be >= 1.
+          items:
+            type: object
+            required: [ticket_type_id, quantity]
+            properties:
+              ticket_type_id: { type: string, format: uuid }
+              quantity: { type: integer, minimum: 1 }
+
+    Order:
+      type: object
+      description: |
+        A ticket purchase. Money fields are minor units; `status` follows the
+        server-side lifecycle `pending -> paid | failed | cancelled | refunded`.
+      properties:
+        id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, paid, failed, cancelled, refunded]
+        currency: { type: string }
+        subtotal_minor: { type: integer, minimum: 0 }
+        total_minor: { type: integer, minimum: 0 }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              ticket_type_id: { type: string, format: uuid }
+              ticket_type: { type: string }
+              quantity: { type: integer }
+              currency: { type: string }
+              unit_price: { type: integer }
+              subtotal: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        paid_at: { type: string, format: date-time, nullable: true }
+        cancelled_at: { type: string, format: date-time, nullable: true }
+        payment_provider: { type: string, nullable: true }
+        provider_ref: { type: string, nullable: true }
+
+    PaymentInit:
+      type: object
+      required: [provider, provider_ref, redirect_url]
+      description: Present on `createOrder` when a payment provider is configured.
+      properties:
+        provider: { type: string, example: chapa }
+        provider_ref: { type: string }
+        redirect_url:
+          type: string
+          format: uri
+          description: Where the buyer pays; confirmation arrives via the provider webhook
+
+    OrderResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          allOf:
+            - $ref: '#/components/schemas/Order'
+            - type: object
+              properties:
+                payment: { $ref: '#/components/schemas/PaymentInit' }
+
+    OrderPage:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/OrderResponse' }
+        pagination: { $ref: '#/components/schemas/PaginationMeta' }
+
+    Ticket:
+      type: object
+      description: An issued admission; tickets are born from a `paid` order.
+      properties:
+        id: { type: string, format: uuid }
+        order_item_id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        ticket_type_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [issued, used, cancelled, refunded]
+        issued_at: { type: string, format: date-time }
+        used_at: { type: string, format: date-time, nullable: true }
+        qr: { $ref: '#/components/schemas/TicketQR' }
+
+    TicketQR:
+      type: object
+      description: The server-signed payload the client renders as a QR code.
+      properties:
+        ticket_id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        issued_at: { type: string }
+        hmac:
+          type: string
+          description: HMAC-SHA256 signature over the payload, keyed by TICKET_QR_SECRET
+
+    CheckInRequest:
+      type: object
+      required: [ticket_id, event_id, issued_at, hmac]
+      description: The full scanned QR payload, echoed back as-is.
+      properties:
+        ticket_id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        issued_at: { type: string }
+        hmac: { type: string }
+
+    CheckInResponse:
+      type: object
+      description: Successful admission; attendee PII is deliberately absent.
+      properties:
+        status: { type: string, example: ok }
+        ticket_id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        ticket_type_name: { type: string }
+        event_title: { type: string }
