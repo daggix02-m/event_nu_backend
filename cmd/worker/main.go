@@ -55,10 +55,13 @@ func main() {
 	outbox := repository.NewOutboxRepository(pool)
 	emailConsumer := worker.NewEmailConsumer(logger, cfg, outbox, sender)
 
-	// Domain-event relay: only when Kafka is part of the deployment. The
-	// relay owns the broker connection — the API writes facts to the outbox
-	// atomically, this process ships them (at-least-once via lease + retry).
+	// Domain-event relay + push fanout: only when Kafka is part of the
+	// deployment. The relay owns the broker's write side — the API writes
+	// facts to the outbox atomically, this process ships them (at-least-once
+	// via lease + retry). The fanout is the read side: a consumer group that
+	// turns event.published into follower push notifications.
 	var relay *worker.DomainEventRelay
+	var fanout *worker.EventPublishedFanout
 	if len(cfg.KafkaBrokers) > 0 {
 		producer := kafka.NewProducer(kafka.ProducerConfig{
 			Brokers:         cfg.KafkaBrokers,
@@ -113,6 +116,21 @@ func main() {
 		pusher,
 	)
 
+	// The fanout reads the same RLS-privileged service-role pool; it shares
+	// the push provider the reminder dispatcher uses.
+	if len(cfg.KafkaBrokers) > 0 {
+		fanout = worker.NewEventPublishedFanout(logger, cfg,
+			repository.NewFollowRepository(pool),
+			repository.NewDeviceRepository(pool),
+			repository.NewDeviceRepository(pool),
+			repository.NewEventRepository(pool),
+			pusher,
+		)
+		logger.Info("event published fanout enabled", "group", cfg.KafkaPushGroup)
+	} else {
+		logger.Info("event published fanout disabled (KAFKA_BROKERS unset)")
+	}
+
 	// Phase 33: recompute the daily analytics rollup + retention.
 	analyticsConsumer := worker.NewAnalyticsRollupConsumer(
 		logger,
@@ -129,6 +147,9 @@ func main() {
 	g.Go(func() error { return analyticsConsumer.Run(gctx) })
 	if relay != nil {
 		g.Go(func() error { return relay.Run(gctx) })
+	}
+	if fanout != nil {
+		g.Go(func() error { return fanout.Run(gctx) })
 	}
 	if err := g.Wait(); err != nil {
 		logger.Error("consumer error", "error", err.Error())

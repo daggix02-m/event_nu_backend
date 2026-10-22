@@ -26,6 +26,10 @@ type Config struct {
 	// because consumers may live in another deployment.
 	KafkaTopicEvents string
 
+	// KafkaPushGroup is the push-fanout consumer group id; each logical
+	// deployment shard joins with its own id.
+	KafkaPushGroup string
+
 	DatabaseURL      string
 	DatabaseAdminURL string
 
@@ -151,6 +155,7 @@ func Load() (Config, error) {
 	cfg.GRPCAddr = getEnv("GRPC_ADDR", "")
 	cfg.KafkaBrokers = getEnvCSV("KAFKA_BROKERS", "")
 	cfg.KafkaTopicEvents = getEnv("KAFKA_EVENTS_TOPIC", "eventnu.events")
+	cfg.KafkaPushGroup = getEnv("KAFKA_PUSH_GROUP", "push-fanout")
 
 	cfg.DatabaseURL = getEnv("DATABASE_URL", "")
 	cfg.DatabaseAdminURL = getEnv("DATABASE_ADMIN_URL", "")

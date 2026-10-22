@@ -47,6 +47,33 @@ func (r *FollowRepository) Unfollow(ctx context.Context, userID, organizerID str
 	return nil
 }
 
+// FollowerIDs lists users following an organizer. Reads are public (RLS, see
+// package comment) so listing works from the worker's service-role pool and
+// the public REST side alike.
+func (r *FollowRepository) FollowerIDs(ctx context.Context, organizerID string) ([]string, error) {
+	rows, err := r.q(ctx).Query(ctx, `
+		SELECT user_id::text FROM organizer_follows
+		WHERE organizer_id = $1
+		ORDER BY user_id`, organizerID)
+	if err != nil {
+		return nil, fmt.Errorf("list followers: %w", err)
+	}
+	defer rows.Close()
+
+	ids := make([]string, 0, 8)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan follower id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate followers: %w", err)
+	}
+	return ids, nil
+}
+
 // State returns follower count and whether the given user (empty for
 // anonymous) follows. NULLIF keeps the empty anonymous id out of uuid casts.
 func (r *FollowRepository) State(ctx context.Context, organizerID, userID string) (int, bool, error) {
