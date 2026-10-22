@@ -26,7 +26,6 @@ func (r *OrganizerRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-// CreateApplication records an organizer application.
 func (r *OrganizerRepository) CreateApplication(ctx context.Context, a *domain.OrganizerApplication) error {
 	data, err := json.Marshal(a.SupportingData)
 	if err != nil {
@@ -75,10 +74,6 @@ func (r *OrganizerRepository) GetApplicationByID(ctx context.Context, id string)
 		FROM organizer_applications WHERE id = $1`, id))
 }
 
-// ApproveApplication atomically transitions a pending application to approved.
-// The `WHERE status = 'pending'` guard means competing reviewers both run the
-// UPDATE, but Postgres re-evaluates the predicate after the first commits, so
-// exactly one wins; the loser matches zero rows and gets a 409 conflict.
 func (r *OrganizerRepository) ApproveApplication(ctx context.Context, id, adminUserID, notes string) (*domain.OrganizerApplication, error) {
 	app, err := scanApplication(r.q(ctx).QueryRow(ctx, `
 		UPDATE organizer_applications
@@ -95,7 +90,6 @@ func (r *OrganizerRepository) ApproveApplication(ctx context.Context, id, adminU
 	return nil, fmt.Errorf("approve organizer_application: %w", err)
 }
 
-// RejectApplication atomically transitions a pending application to rejected.
 func (r *OrganizerRepository) RejectApplication(ctx context.Context, id, adminUserID, notes string) error {
 	tag, err := r.q(ctx).Exec(ctx, `
 		UPDATE organizer_applications
@@ -145,17 +139,12 @@ func (r *OrganizerRepository) GetOrganizerByOwner(ctx context.Context, userID st
 		FROM organizers o WHERE o.owner_user_id = $1 AND o.deleted_at IS NULL LIMIT 1`, userID))
 }
 
-// GetOrganizerBySlug resolves a live organizer by slug (used to surface a 409
-// slug_taken before an insert).
 func (r *OrganizerRepository) GetOrganizerBySlug(ctx context.Context, slug string) (*domain.Organizer, error) {
 	return scanOrganizer(r.q(ctx).QueryRow(ctx, `
 		SELECT `+organizerColumns+`
 		FROM organizers WHERE slug = $1 AND deleted_at IS NULL`, slug))
 }
 
-// organizerListColumns = organizerColumns (aliased to `o`, as ListAdmin joins
-// nothing but must disambiguate the correlated event_count subquery) plus the
-// derived event count across every lifecycle status.
 const organizerListColumns = `o.id, o.owner_user_id, o.slug, o.name, o.bio, o.logo_media_id, o.status, o.created_at, o.updated_at, o.deleted_at,
 	(SELECT count(*) FROM events ev WHERE ev.organizer_id = o.id AND ev.deleted_at IS NULL) AS event_count`
 
@@ -172,14 +161,10 @@ func scanOrganizerList(row pgx.Row) (*domain.Organizer, error) {
 	return &o, nil
 }
 
-// escapeLikePattern escapes the SQL LIKE wildcards in user input so a search
-// term like "100%" matches literally instead of greedy-matching everything.
 func escapeLikePattern(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
-// adminOrganizerClause builds the admin-list WHERE clause. q matches name or
-// slug (case-insensitive substring); status is a validated organizer_status.
 func adminOrganizerClause(q, status string) (string, []any) {
 	conds := []string{"o.deleted_at IS NULL"}
 	args := []any{}
@@ -222,7 +207,6 @@ func (r *OrganizerRepository) ListAdmin(ctx context.Context, q, status string, l
 	return out, rows.Err()
 }
 
-// CountAdmin counts organizers matching the optional admin filters.
 func (r *OrganizerRepository) CountAdmin(ctx context.Context, q, status string) (int, error) {
 	where, args := adminOrganizerClause(q, status)
 	var total int

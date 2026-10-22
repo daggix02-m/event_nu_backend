@@ -31,12 +31,8 @@ func NewEmailService(outbox domain.EmailOutboxStore, codes domain.EmailCodeStore
 const codeTTL = 24 * time.Hour
 const verifyMaxAttempts = 5
 
-// verifyURL is the deep link the app opens to complete verification. The code
-// is never placed in a URL — it rides separately as verify_code so it cannot
-// leak through logs, referrers, or the browser history.
 const verifyURL = "eventnu://verify"
 
-// SendWelcome enqueues the welcome email after registration.
 func (s *EmailService) SendWelcome(ctx context.Context, user *domain.User) error {
 	return s.enqueue(ctx, user.Email, user.Username, s.config.BrevoTemplateWelcome, map[string]any{
 		"name":     user.Username,
@@ -44,10 +40,6 @@ func (s *EmailService) SendWelcome(ctx context.Context, user *domain.User) error
 	})
 }
 
-// SendVerification generates a one-time verification code, stores its hash,
-// and enqueues a verification email. The clickable link carries a constant
-// deep link (no code); the 6-digit code is a separate template param so it
-// never appears in a URL.
 func (s *EmailService) SendVerification(ctx context.Context, user *domain.User) (string, error) {
 	code, err := generateCode(6)
 	if err != nil {
@@ -68,7 +60,6 @@ func (s *EmailService) SendVerification(ctx context.Context, user *domain.User) 
 	return code, nil
 }
 
-// VerifyCode redeems a verification code and marks the user verified.
 func (s *EmailService) VerifyCode(ctx context.Context, code string) error {
 	if code == "" {
 		return shared.NewAppError("invalid_code", "A verification code is required.", http.StatusBadRequest)
@@ -86,8 +77,7 @@ func (s *EmailService) VerifyCode(ctx context.Context, code string) error {
 
 func (s *EmailService) enqueue(ctx context.Context, email, name string, templateID int, params map[string]any) error {
 	if templateID <= 0 {
-		// Template not configured yet — skip silently rather than fail the
-		// whole request. Surfaces in logs as an operational gap.
+
 		return nil
 	}
 	m := domain.EmailOutbox{

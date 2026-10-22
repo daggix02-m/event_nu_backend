@@ -26,8 +26,6 @@ func (r *CategoryPreferenceRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-// Get returns the user's category ids (empty slice when they have no row yet)
-// and the last update time (nil when never set).
 func (r *CategoryPreferenceRepository) Get(ctx context.Context, userID string) ([]string, *time.Time, error) {
 	var (
 		ids       []string
@@ -46,8 +44,6 @@ func (r *CategoryPreferenceRepository) Get(ctx context.Context, userID string) (
 	return ids, updatedAt, nil
 }
 
-// Replace overwrites the user's category ids and returns the new updated_at.
-// At least one id is enforced by the migration's cardinality CHECK.
 func (r *CategoryPreferenceRepository) Replace(ctx context.Context, userID string, categoryIDs []string) (time.Time, error) {
 	var updatedAt time.Time
 	err := r.q(ctx).QueryRow(ctx, `
@@ -62,9 +58,6 @@ func (r *CategoryPreferenceRepository) Replace(ctx context.Context, userID strin
 	return updatedAt, nil
 }
 
-// ActiveCategoryCount returns how many of the given category ids exist and are
-// active. The preferences service compares it against the deduplicated input
-// length to reject unknown/inactive ids.
 func (r *CategoryPreferenceRepository) ActiveCategoryCount(ctx context.Context, categoryIDs []string) (int, error) {
 	var n int
 	err := r.q(ctx).QueryRow(ctx, `

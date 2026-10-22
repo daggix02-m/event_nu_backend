@@ -9,11 +9,8 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
-// maxTokenLength bounds the FCM registration token (FCM tokens are ~250 chars;
-// 4096 leaves headroom without inviting multi-KB rows).
 const maxTokenLength = 4096
 
-// deviceStore is the device-repository surface DeviceService needs.
 type deviceStore interface {
 	Upsert(ctx context.Context, userID, token, platform string) (*domain.Device, error)
 	Delete(ctx context.Context, userID, id string) error
@@ -55,7 +52,6 @@ func (s *DeviceService) Deregister(ctx context.Context, userID, id string) error
 	return s.devices.Delete(ctx, userID, id)
 }
 
-// List returns the caller's registered devices.
 func (s *DeviceService) List(ctx context.Context, userID string) ([]*domain.Device, error) {
 	return s.devices.ListByUser(ctx, userID)
 }

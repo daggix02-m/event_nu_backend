@@ -72,7 +72,7 @@ func (r *DomainEventRepository) ClaimBatch(ctx context.Context, batchSize int, l
 		if err := rows.Scan(&d.ID, &ev.Name, &ev.Key, &raw, &ev.OccurredAt, &d.Attempts); err != nil {
 			return nil, fmt.Errorf("scan domain event batch: %w", err)
 		}
-		// jsonb comes back as its JSON bytes; no re-marshal needed.
+
 		ev.Payload = raw
 		d.Event = ev
 		items = append(items, d)
@@ -83,8 +83,6 @@ func (r *DomainEventRepository) ClaimBatch(ctx context.Context, batchSize int, l
 	return items, nil
 }
 
-// MarkSent flips a delivered row. A plain (transaction-less) update is
-// enough: claiming already leased the row, so exactly one worker is here.
 func (r *DomainEventRepository) MarkSent(ctx context.Context, id string) error {
 	_, err := r.pool.Exec(ctx, `
 		UPDATE domain_events

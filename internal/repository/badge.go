@@ -25,9 +25,6 @@ func (r *BadgeRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-// Award attempts to award a badge to a user. Returns true only when the badge
-// was newly earned; false when the milestone isn't met yet or it was already
-// awarded (the unique constraint makes repeats a no-op).
 func (r *BadgeRepository) Award(ctx context.Context, userID, badgeType string, metadata map[string]any) (bool, error) {
 	raw, _ := json.Marshal(metadata)
 	var awarded bool

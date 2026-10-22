@@ -24,17 +24,13 @@ const (
 	fcmDefaultTokenURL = "https://oauth2.googleapis.com/token"
 )
 
-// FCMConfig is the subset of config.Config the FCM client needs. Passing them
-// as a struct avoids a circular import from infrastructure → config.
 type FCMConfig struct {
 	ProjectID      string
-	ServiceAccount string // JSON blob; takes precedence over file path
+	ServiceAccount string
 	APIBase        string
 	TokenURL       string
 }
 
-// serviceAccountJSON models the minimum fields the Firebase service-account
-// JSON must expose for token generation.
 type serviceAccountJSON struct {
 	ProjectID    string `json:"project_id"`
 	ClientEmail  string `json:"client_email"`
@@ -42,7 +38,6 @@ type serviceAccountJSON struct {
 	PrivateKeyID string `json:"private_key_id"`
 }
 
-// FCMClient sends push notifications via the Firebase Cloud Messaging v1 API.
 type FCMClient struct {
 	projectID string
 	tokenURL  string
@@ -58,15 +53,10 @@ type FCMClient struct {
 	tokenExpiry time.Time
 }
 
-// NewFCMFromBytes parses the raw service-account JSON bytes and returns a
-// ready-to-send client. An empty ProjectID in cfg is filled from the JSON.
 func NewFCMFromBytes(cfg FCMConfig) (*FCMClient, error) {
 	return newFCMFromRaw(cfg)
 }
 
-// NewFCMFromEnvFile reads the service-account file at path, applies defaults
-// suitable for tests (FCM_API_BASE / FCM_TOKEN_URL overrides), and returns
-// a ready-to-send client.
 func NewFCMFromEnvFile(path, apiBase, tokenURL string) (*FCMClient, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -121,8 +111,6 @@ func newFCMFromRaw(cfg FCMConfig) (*FCMClient, error) {
 	}, nil
 }
 
-// bearerToken returns a valid OAuth2 access token, refreshing it when near
-// expiry. Tokens are cached for 45 minutes (FCM tokens are valid for 1 hour).
 func (c *FCMClient) bearerToken(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -187,8 +175,6 @@ func (c *FCMClient) bearerToken(ctx context.Context) (string, error) {
 
 func (c *FCMClient) Name() string { return "fcm" }
 
-// Send delivers a single push notification via FCM v1. The message name is
-// returned on success.
 func (c *FCMClient) Send(ctx context.Context, m Message) (string, error) {
 	bearer, err := c.bearerToken(ctx)
 	if err != nil {
@@ -239,7 +225,6 @@ func (c *FCMClient) Send(ctx context.Context, m Message) (string, error) {
 	}
 }
 
-// classifyFCM maps HTTP status + JSON error.status to an ErrCode.
 func classifyFCM(status int, body []byte) ErrCode {
 	raw := string(body)
 
@@ -252,7 +237,6 @@ func classifyFCM(status int, body []byte) ErrCode {
 	_ = json.Unmarshal(body, &fcmErr)
 	errStatus := fcmErr.Error.Status
 
-	// Invalid / unregistered token → prune device.
 	for _, bad := range []string{
 		"UNREGISTERED", "INVALID_ARGUMENT", "SENDER_ID_MISMATCH", "NOT_FOUND",
 	} {
@@ -276,15 +260,12 @@ func classifyFCM(status int, body []byte) ErrCode {
 	return CodeFail
 }
 
-// parsePrivateKey extracts an RSA key from the PEM string in the service
-// account JSON (PKCS8 primary; PKCS1 fallback).
 func parsePrivateKey(pemStr string) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
 		return nil, fmt.Errorf("no PEM block found in private_key")
 	}
 
-	// PKCS8 (type "PRIVATE KEY") — standard for Firebase service accounts.
 	if block.Type == "PRIVATE KEY" {
 		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 		if err != nil {
@@ -297,7 +278,6 @@ func parsePrivateKey(pemStr string) (*rsa.PrivateKey, error) {
 		return rsaKey, nil
 	}
 
-	// PKCS1 (type "RSA PRIVATE KEY") — legacy fallback.
 	if block.Type == "RSA PRIVATE KEY" {
 		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 		if err != nil {

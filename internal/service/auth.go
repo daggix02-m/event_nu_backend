@@ -43,11 +43,6 @@ func mustGenerateDummyHash() []byte {
 	return h
 }
 
-// Authentication service: JWT access tokens, opaque refresh tokens, and
-// account state. Its persistence ports (domain.UserStore / domain.SessionStore)
-// live in package domain (hexagonal slice 1); concrete repositories satisfy
-// them by declaration (see internal/arch_test.go).
-
 type AuthService struct {
 	users    domain.UserStore
 	sessions domain.SessionStore
@@ -58,14 +53,12 @@ func NewAuthService(users domain.UserStore, sessions domain.SessionStore, cfg co
 	return &AuthService{users: users, sessions: sessions, config: cfg}
 }
 
-// Tokens carries the access (JWT) and refresh (opaque) tokens for a session.
 type Tokens struct {
 	AccessToken  string
 	RefreshToken string
 	ExpiresIn    time.Duration
 }
 
-// UserSession pairs an authenticated user with their issued tokens.
 type UserSession struct {
 	User   *domain.User
 	Tokens *Tokens
@@ -143,7 +136,7 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken, userAgent, ip s
 	session, err := s.sessions.ConsumeForRotation(ctx, hash)
 	if err != nil {
 		if err == shared.ErrNotFound {
-			// Consumed, expired, or revoked — all land here and reject the token.
+
 			return nil, shared.NewAppError("invalid_refresh_token", "The refresh token is invalid or expired.", http.StatusUnauthorized)
 		}
 		return nil, err
@@ -169,7 +162,6 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	return s.sessions.Revoke(ctx, hashToken(refreshToken))
 }
 
-// GetUser returns a non-deleted user by ID.
 func (s *AuthService) GetUser(ctx context.Context, id string) (*domain.User, error) {
 	user, err := s.users.GetByID(ctx, id)
 	if err != nil {
@@ -178,9 +170,6 @@ func (s *AuthService) GetUser(ctx context.Context, id string) (*domain.User, err
 	return user, nil
 }
 
-// UpdateProfile validates and applies a partial profile update for the caller.
-// Nil pointers mean "leave unchanged"; a request that changes nothing (all
-// three nil) is rejected as a validation error before hitting the database.
 func (s *AuthService) UpdateProfile(ctx context.Context, userID string, username, bio, photoURL *string) (*domain.User, error) {
 	if username == nil && bio == nil && photoURL == nil {
 		return nil, shared.NewAppError("validation_error", "nothing to update", http.StatusUnprocessableEntity)
@@ -242,7 +231,6 @@ func (s *AuthService) newSession(ctx context.Context, user *domain.User, userAge
 	return &Tokens{AccessToken: access, RefreshToken: refresh, ExpiresIn: s.config.JWTExpiry}, nil
 }
 
-// signAccessToken mints a signed JWT with sub (user id), role, and jti (session id).
 func (s *AuthService) signAccessToken(user *domain.User, expiresAt time.Time) (string, error) {
 	claims := jwt.MapClaims{
 		"sub":  user.ID,
@@ -259,7 +247,6 @@ func (s *AuthService) signAccessToken(user *domain.User, expiresAt time.Time) (s
 	return signed, nil
 }
 
-// ParseAccessToken validates a JWT and returns its subject (user id) and role.
 func (s *AuthService) ParseAccessToken(tokenString string) (string, string, error) {
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -318,7 +305,6 @@ func firstFieldError(v *validator.Validator) string {
 	return "invalid input"
 }
 
-// newUUID is a lightweight UUIDv4 generator for token jti claims.
 func newUUID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {

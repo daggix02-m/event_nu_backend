@@ -2,9 +2,6 @@ package domain
 
 import "time"
 
-// Rsvp records a user's intent to attend an event. Capacity is reserved
-// atomically by attempt_event_rsvp() at the SQL layer, so this Go type is
-// write-thin (toggles call the SQL helper; reads scan rows).
 type Rsvp struct {
 	ID         string
 	EventID    string
@@ -21,11 +18,9 @@ type Rsvp struct {
 type RsvpWithEvent struct {
 	Rsvp
 	EventTitle string
-	EventTime  *time.Time // nil when the event is hidden
+	EventTime  *time.Time
 }
 
-// Review is a rating + optional body left on an event by an attendee. At most
-// one review per (user, event) — enforced by a UNIQUE constraint.
 type Review struct {
 	ID        string
 	EventID   string
@@ -37,9 +32,6 @@ type Review struct {
 	UpdatedAt time.Time
 }
 
-// Report is a user moderation report against a polymorphic target
-// (event|user|venue|comment in Phase 12c). It flips the target's
-// moderation_status to 'under_review' and never auto-hides content.
 type Report struct {
 	ID             string
 	ReporterUserID string
@@ -52,9 +44,7 @@ type Report struct {
 	ResolvedAt     *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
-	// ReporterUsername, ReporterEmail and ReporterPhotoURL carry the reporter's
-	// identity when the row is loaded by an admin queue listing (LEFT JOIN
-	// users). They are nil on every non-admin read path.
+
 	ReporterUsername *string
 	ReporterEmail    *string
 	ReporterPhotoURL *string

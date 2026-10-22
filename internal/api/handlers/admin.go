@@ -13,9 +13,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
-// AdminHandlers serve the moderation surface: the report review queue and
-// explicit event block/restore. Routes are mounted under the admin guard, so
-// every handler re-verifies the caller is an admin before acting.
 type AdminHandlers struct {
 	app   *api.Application
 	admin *service.AdminService
@@ -118,9 +115,6 @@ func (h *AdminHandlers) ListEvents(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// adminEventDTO builds the admin event row and resolves the poster/teaser
-// media URLs (blank when the media is not attached or not yet ready). A media
-// resolution hiccup must not fail the list; it is logged and left blank.
 func (h *AdminHandlers) adminEventDTO(r *http.Request, e *domain.Event) dto.AdminEventDTO {
 	out := dto.NewAdminEventDTO(e)
 	if e.PosterMediaID == nil && e.TeaserMediaID == nil {
@@ -166,8 +160,6 @@ func (h *AdminHandlers) ListOrganizers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetOrganizer is the console's organizer detail: profile + resolved logo +
-// total event count + the newest events across all lifecycle statuses.
 func (h *AdminHandlers) GetOrganizer(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -195,8 +187,6 @@ func (h *AdminHandlers) GetOrganizer(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, h.adminOrganizerDetailDTO(r, org, recent, eventCount))
 }
 
-// CreateOrganizer provisions a standalone or owner-linked organizer profile
-// directly (no application queue involved).
 func (h *AdminHandlers) CreateOrganizer(w http.ResponseWriter, r *http.Request) {
 	if !h.isAdmin(r.Context()) {
 		h.app.AppError(w, r, shared.NewAppError("forbidden", "Admin access required.", http.StatusForbidden))
@@ -223,8 +213,6 @@ func (h *AdminHandlers) CreateOrganizer(w http.ResponseWriter, r *http.Request) 
 	shared.WriteJSON(w, http.StatusCreated, h.adminOrganizerDetailDTO(r, created, nil, 0))
 }
 
-// adminOrganizerDTO builds the console list row, carrying the repo-derived
-// event count and resolving the organizer logo URL.
 func (h *AdminHandlers) adminOrganizerDTO(r *http.Request, o *domain.Organizer) dto.AdminOrganizerDTO {
 	out := dto.NewAdminOrganizerDTO(o)
 	out.EventCount = o.EventCount
@@ -232,7 +220,6 @@ func (h *AdminHandlers) adminOrganizerDTO(r *http.Request, o *domain.Organizer) 
 	return out
 }
 
-// adminOrganizerDetailDTO composes the console detail response.
 func (h *AdminHandlers) adminOrganizerDetailDTO(r *http.Request, o *domain.Organizer, recent []*domain.Event, eventCount int) dto.AdminOrganizerDetailDTO {
 	out := dto.AdminOrganizerDetailDTO{
 		AdminOrganizerDTO: dto.NewAdminOrganizerDTO(o),
@@ -258,8 +245,6 @@ func (h *AdminHandlers) resolveOrganizerLogo(r *http.Request, mediaID *string, o
 	return logo
 }
 
-// ListUsers is the admin user directory: search (email/username), role/status
-// filters and pagination.
 func (h *AdminHandlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 	if !h.isAdmin(r.Context()) {
 		h.app.AppError(w, r, shared.NewAppError("forbidden", "Admin access required.", http.StatusForbidden))
@@ -287,8 +272,6 @@ func (h *AdminHandlers) ListUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// UpdateUser edits a user's directory record (username/bio/photo_url/role/
-// status) with the self-demote/self-suspend guard applied in the service.
 func (h *AdminHandlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -312,7 +295,6 @@ func (h *AdminHandlers) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, dto.NewAdminUserDTO(user))
 }
 
-// SuspendUser locks a user out of new logins (spec §10).
 func (h *AdminHandlers) SuspendUser(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -330,7 +312,6 @@ func (h *AdminHandlers) SuspendUser(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, dto.NewAdminUserDTO(user))
 }
 
-// RestoreUser re-activates a suspended account (spec §10).
 func (h *AdminHandlers) RestoreUser(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -348,7 +329,6 @@ func (h *AdminHandlers) RestoreUser(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, dto.NewAdminUserDTO(user))
 }
 
-// ListVenues is the console venue directory (GET /api/v1/admin/venues).
 func (h *AdminHandlers) ListVenues(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return
@@ -374,8 +354,6 @@ func (h *AdminHandlers) ListVenues(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CreateVenue provisions a venue bound to an existing organizer (400 when the
-// body is malformed).
 func (h *AdminHandlers) CreateVenue(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return
@@ -423,7 +401,6 @@ func (h *AdminHandlers) ResolveReport(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, dto.NewAdminReportDTO(report))
 }
 
-// BlockEvent hides an event from public surfaces (moderation only).
 func (h *AdminHandlers) BlockEvent(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -436,7 +413,6 @@ func (h *AdminHandlers) BlockEvent(w http.ResponseWriter, r *http.Request) {
 	h.writeModeratedEvent(w, r, id, h.admin.BlockEvent)
 }
 
-// RestoreEvent clears an event's moderation block.
 func (h *AdminHandlers) RestoreEvent(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -449,9 +425,6 @@ func (h *AdminHandlers) RestoreEvent(w http.ResponseWriter, r *http.Request) {
 	h.writeModeratedEvent(w, r, id, h.admin.RestoreEvent)
 }
 
-// GetEvent renders the console event detail: the admin row with resolved media
-// URLs plus organizer identity and venue. Missing event → 404, but a missing
-// organizer/venue is tolerated (rows render without them).
 func (h *AdminHandlers) GetEvent(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -483,8 +456,6 @@ func (h *AdminHandlers) GetEvent(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, out)
 }
 
-// CreateEvent is the console's atomic event create: organizer resolve-or-create,
-// venue resolve-or-create, insert, then publish (publish:false keeps a draft).
 func (h *AdminHandlers) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return
@@ -502,8 +473,6 @@ func (h *AdminHandlers) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusCreated, h.adminEventDTO(r, event))
 }
 
-// ReassignOrganizer moves an event to another organizer — by id, or by a new
-// inline organizer auto-provisioned by the request.
 func (h *AdminHandlers) ReassignOrganizer(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -530,8 +499,6 @@ func (h *AdminHandlers) ReassignOrganizer(w http.ResponseWriter, r *http.Request
 	shared.WriteJSON(w, http.StatusOK, h.adminEventDTO(r, event))
 }
 
-// UpdateEvent edits any event's content. Same field rules as the public edit
-// but without the organizer-ownership and draft-only gates (admin authority).
 func (h *AdminHandlers) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -554,12 +521,10 @@ func (h *AdminHandlers) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, h.adminEventDTO(r, updated))
 }
 
-// PublishEvent posts a draft or cancelled event (existing venue required).
 func (h *AdminHandlers) PublishEvent(w http.ResponseWriter, r *http.Request) {
 	h.writeAdminEventTransition(w, r, h.admin.PublishEventAdmin)
 }
 
-// CancelEvent pulls a draft or published event down.
 func (h *AdminHandlers) CancelEvent(w http.ResponseWriter, r *http.Request) {
 	h.writeAdminEventTransition(w, r, h.admin.CancelEventAdmin)
 }
@@ -581,8 +546,6 @@ func (h *AdminHandlers) writeAdminEventTransition(w http.ResponseWriter, r *http
 	shared.WriteJSON(w, http.StatusOK, h.adminEventDTO(r, event))
 }
 
-// adminOrganizerFromInput maps the inline organizer payload onto a domain
-// organizer for the admin create/reassign paths.
 func adminOrganizerFromInput(in *dto.AdminEventOrganizerInput) *domain.Organizer {
 	o := &domain.Organizer{
 		Name:        in.Name,
@@ -596,8 +559,6 @@ func adminOrganizerFromInput(in *dto.AdminEventOrganizerInput) *domain.Organizer
 	return o
 }
 
-// parseAdminEventRequest decodes the atomic create payload into the service
-// input, resolving RFC3339 timestamps like the public create endpoint.
 func parseAdminEventRequest(w http.ResponseWriter, r *http.Request) (*service.AdminEventCreateInput, error) {
 	var req dto.CreateAdminEventRequest
 	if err := shared.DecodeJSON(w, r, &req); err != nil {
@@ -633,8 +594,6 @@ func parseAdminEventRequest(w http.ResponseWriter, r *http.Request) (*service.Ad
 	return in, nil
 }
 
-// parseAdminEventUpdate decodes the content-fields payload for the admin edit
-// (organizer/venue/publish are not part of an edit).
 func parseAdminEventUpdate(w http.ResponseWriter, r *http.Request) (*domain.Event, error) {
 	var req dto.CreateAdminEventRequest
 	if err := shared.DecodeJSON(w, r, &req); err != nil {
@@ -643,7 +602,6 @@ func parseAdminEventUpdate(w http.ResponseWriter, r *http.Request) (*domain.Even
 	return eventFromAdminFields(req)
 }
 
-// eventFromAdminFields maps the shared event form onto a domain event.
 func eventFromAdminFields(req dto.CreateAdminEventRequest) (*domain.Event, error) {
 	starts, err := time.Parse(time.RFC3339, req.StartsAt)
 	if err != nil {
@@ -673,7 +631,6 @@ func eventFromAdminFields(req dto.CreateAdminEventRequest) (*domain.Event, error
 	return e, nil
 }
 
-// requireAdmin writes a 403 and returns false when the caller is not admin.
 func (h *AdminHandlers) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	if h.isAdmin(r.Context()) {
 		return true

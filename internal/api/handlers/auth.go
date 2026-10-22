@@ -107,7 +107,6 @@ func (h *AuthHandlers) Me(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, toUserDTO(user))
 }
 
-// UpdateMe applies a partial profile update for the authenticated user.
 func (h *AuthHandlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserID(r.Context())
 	if userID == "" {

@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ReminderRepository manages event reminders (record-only; dispatch is Phase 17).
 type ReminderRepository struct {
 	pool *pgxpool.Pool
 }

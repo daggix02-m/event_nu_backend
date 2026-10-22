@@ -260,8 +260,7 @@ func (h *EventHandlers) enrichedEventDTO(r *http.Request, e *domain.Event) dto.E
 	}
 	count, liked, err := h.likes.State(r.Context(), e.ID, middleware.UserID(r.Context()))
 	if err != nil {
-		// A like-count hiccup must not fail the whole event payload; leave the
-		// defaults (0,false) and report it instead.
+
 		h.app.Logger.Warn("event-like state unavailable", "event_id", e.ID, "error", err.Error())
 		return out
 	}

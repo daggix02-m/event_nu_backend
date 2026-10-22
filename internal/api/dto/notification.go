@@ -6,7 +6,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
 )
 
-// NotificationDTO is the wire form of a notification inbox entry.
 type NotificationDTO struct {
 	ID        string         `json:"id"`
 	Type      string         `json:"type"`
@@ -34,18 +33,14 @@ type NotificationReadResult struct {
 	Read bool `json:"read"`
 }
 
-// NotificationReadAllResult reports how many notifications were marked read.
 type NotificationReadAllResult struct {
 	Updated int64 `json:"updated"`
 }
 
-// ReminderRequest sets a reminder; remind_at is an RFC3339 timestamp that must
-// land before the event starts.
 type ReminderRequest struct {
 	RemindAt time.Time `json:"remind_at"`
 }
 
-// ReminderDTO is the wire form of a reminder with its event summary.
 type ReminderDTO struct {
 	ID         string     `json:"id"`
 	EventID    string     `json:"event_id"`
@@ -68,9 +63,6 @@ func NewReminderDTO(r *domain.ReminderWithEvent) ReminderDTO {
 	}
 }
 
-// AdminReportDTO is the admin-facing report queue item. ReporterUsername,
-// ReporterEmail and ReporterPhotoURL carry the reporter's identity (populated
-// by the admin list's users join; nil elsewhere).
 type AdminReportDTO struct {
 	ID               string     `json:"id"`
 	ReporterID       string     `json:"reporter_user_id"`
@@ -105,12 +97,10 @@ func NewAdminReportDTO(r *domain.Report) AdminReportDTO {
 	}
 }
 
-// ResolveRequest optionally records why a report was closed.
 type ResolveRequest struct {
 	Resolution string `json:"resolution"`
 }
 
-// VenueDetailDTO embeds a venue with its published-event page.
 type VenueDetailDTO struct {
 	Venue             VenueDTO   `json:"venue"`
 	Events            []EventDTO `json:"events"`
@@ -120,8 +110,6 @@ type VenueDetailDTO struct {
 	EventsHasNextPage bool       `json:"events_has_next_page"`
 }
 
-// VenueUpdateRequest carries the editable venue fields (PATCH semantics: only
-// fields that can change are present).
 type VenueUpdateRequest struct {
 	Name        string  `json:"name"`
 	Address     string  `json:"address"`

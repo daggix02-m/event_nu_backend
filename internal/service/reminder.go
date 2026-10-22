@@ -9,7 +9,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
-// reminderStore is the reminder-repository surface ReminderService needs.
 type reminderStore interface {
 	Create(ctx context.Context, rem *domain.Reminder) (*domain.Reminder, error)
 	Delete(ctx context.Context, userID, eventID string) error
@@ -26,8 +25,6 @@ func NewReminderService(reminders reminderStore, events eventStore) *ReminderSer
 	return &ReminderService{reminders: reminders, events: events}
 }
 
-// Create sets a reminder ahead of a published event. The reminder boundary is
-// the event start; remind_at must be in the future and before starts_at.
 func (s *ReminderService) Create(ctx context.Context, userID, eventID string, remindAt time.Time) (*domain.Reminder, error) {
 	ev, err := s.events.GetByID(ctx, eventID)
 	if err != nil {

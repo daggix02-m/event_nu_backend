@@ -8,10 +8,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/domain"
 )
 
-// Sync domains served by GET /api/v1/sync. This is the public-discovery
-// catalog: content the client caches for offline reading. User-scoped rows
-// (saves, rsvps, reminders, notifications, follows) are deliberately absent —
-// the client refreshes those wholesale via their own endpoints on reconnect.
 const (
 	SyncDomainEvents      = "events"
 	SyncDomainVenues      = "venues"
@@ -27,10 +23,6 @@ const (
 	changeDelete = "delete"
 )
 
-// SyncDomainsOrder is the canonical order changes are emitted in. Because
-// soft deletes are only tracked (and whitelisted) for tables with a real
-// deleted_at, deletes only apply to a subset; comment rows are hard-deleted
-// and never emit delete ops.
 var SyncDomainsOrder = []string{
 	SyncDomainEvents,
 	SyncDomainVenues,
@@ -41,7 +33,6 @@ var SyncDomainsOrder = []string{
 	SyncDomainReviews,
 }
 
-// SyncWhitelist validates the ?domains= query param.
 var SyncWhitelist = func() map[string]struct{} {
 	m := make(map[string]struct{}, len(SyncDomainsOrder))
 	for _, d := range SyncDomainsOrder {
@@ -50,8 +41,6 @@ var SyncWhitelist = func() map[string]struct{} {
 	return m
 }()
 
-// SyncDeleteCapable marks domains whose soft deletes are surfaced as delete
-// ops. Matches the sync_deleted_ids() whitelist in migration 00018.
 var SyncDeleteCapable = map[string]bool{
 	SyncDomainEvents:     true,
 	SyncDomainVenues:     true,
@@ -59,9 +48,6 @@ var SyncDeleteCapable = map[string]bool{
 	SyncDomainReviews:    true,
 }
 
-// Change is one delta entry: a row to upsert (Row set) or a soft-deleted row
-// id to drop (Row nil). Public content in every payload — delete ops only
-// carry the id.
 type Change struct {
 	Domain string
 	Op     string
@@ -69,14 +55,12 @@ type Change struct {
 	Row    any
 }
 
-// PullOptions are the sync request parameters.
 type PullOptions struct {
 	Cursor  time.Time
 	Domains []string
 	Limit   int
 }
 
-// PullResult is the aggregated delta response.
 type PullResult struct {
 	Changes    []Change
 	NextCursor time.Time
@@ -89,7 +73,6 @@ type domainPull struct {
 	HasMore   bool
 }
 
-// SyncService aggregates per-domain deltas into one cursor-based response.
 type SyncService struct {
 	repo domain.SyncStore
 }
@@ -115,8 +98,8 @@ func (s *SyncService) Pull(ctx context.Context, opts PullOptions) (*PullResult, 
 	var (
 		changes []Change
 		hasMore = make(map[string]bool, len(domains))
-		advance = opts.Cursor // max watermark once every domain is exhausted
-		clamp   = opts.Cursor // min watermark among domains that still have rows
+		advance = opts.Cursor
+		clamp   = opts.Cursor
 		clamped bool
 		anyMore bool
 	)

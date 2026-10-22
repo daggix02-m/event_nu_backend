@@ -12,22 +12,12 @@ type Config struct {
 	AppEnv string
 	Port   string
 
-	// GRPCAddr serves the gRPC transport when set (e.g. ":50051"); empty
-	// means the gRPC transport is disabled — the REST API alone is the
-	// default so existing deployments run unchanged.
 	GRPCAddr string
 
-	// KafkaBrokers enables the domain-event publisher when non-empty
-	// (comma-separated seed brokers, e.g. "localhost:9092"). Like GRPCAddr,
-	// empty means disabled so deployments run unchanged.
 	KafkaBrokers []string
 
-	// KafkaTopicEvents receives the published-fact topic; overridable only
-	// because consumers may live in another deployment.
 	KafkaTopicEvents string
 
-	// KafkaPushGroup is the push-fanout consumer group id; each logical
-	// deployment shard joins with its own id.
 	KafkaPushGroup string
 
 	DatabaseURL      string
@@ -42,29 +32,20 @@ type Config struct {
 	// gate/dev environments work without extra configuration.
 	TicketQRSecret string
 
-	// Payment gateway (Phase 15). PaymentProvider is "noop" (no gateway, local
-	// dev/tests) or "chapa". ChapaWebhookSecret verifies webhook signatures and
-	// defaults to ChapaSecretKey.
 	PaymentProvider    string
 	ChapaSecretKey     string
 	ChapaAPIBase       string
 	ChapaWebhookSecret string
 	ChapaRedirectBase  string
 
-	// SyncMaxLimit caps the per-domain page size of GET /api/v1/sync (Phase
-	// 16) and is the default when the client omits ?limit=.
 	SyncMaxLimit int
 
-	// Push notifications (Phase 17). PushProvider is "noop" (dev/tests) or
-	// "fcm"; FCMServiceAccount is the Firebase service-account JSON blob used
-	// to mint OAuth2 bearer tokens for the FCM v1 API.
 	PushProvider      string
 	FCMServiceAccount string
 	FCMProjectID      string
 	FCMAPIBase        string
 	FCMTokenURL       string
 
-	// Worker / push-consumer tuning.
 	PushPollInterval   time.Duration
 	PushBatchSize      int
 	PushMaxAttempts    int
@@ -96,7 +77,6 @@ type Config struct {
 	BrevoTemplateWelcome int
 	BrevoTemplateVerify  int
 
-	// Worker / email consumer tuning.
 	EmailPollInterval time.Duration
 
 	// DomainEventPollInterval paces the outbox relay when Kafka is enabled.
@@ -105,8 +85,6 @@ type Config struct {
 	EmailMaxAttempts        int
 	EmailRetryBaseDelay     time.Duration
 
-	// Media pipeline. MediaStorageProvider is "local" (filesystem, dev/tests)
-	// or "s3" (S3-compatible API — MinIO locally, Cloudflare R2 in production).
 	MediaStorageProvider   string
 	MediaS3Endpoint        string
 	MediaS3Region          string
@@ -122,8 +100,6 @@ type Config struct {
 	MediaJobMaxAttempts    int
 	MediaJobRetryBaseDelay time.Duration
 
-	// First-party analytics (Phase 33). Ingest limits guard the rate-limited
-	// batch endpoint; the rollup worker recomputes daily aggregates.
 	AnalyticsIngestRateLimit    int
 	AnalyticsIngestRateWindow   time.Duration
 	AnalyticsMaxBatch           int
@@ -132,7 +108,6 @@ type Config struct {
 	AnalyticsRollupPollInterval time.Duration
 }
 
-// parseDuration supports Go durations ("15m", "1h") plus day suffixes ("30d").
 func parseDuration(v string) (time.Duration, error) {
 	if strings.HasSuffix(v, "d") {
 		days, err := strconv.Atoi(strings.TrimSuffix(v, "d"))
@@ -144,8 +119,6 @@ func parseDuration(v string) (time.Duration, error) {
 	return time.ParseDuration(v)
 }
 
-// Load reads configuration from the environment and validates it, failing
-// fast on missing or invalid values rather than surfacing runtime panics.
 func Load() (Config, error) {
 	var cfg Config
 	var err error
@@ -424,8 +397,6 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-// getEnvCSV reads a comma-separated list, trimming whitespace; an unset or
-// empty variable yields nil so "disabled" is unambiguous.
 func getEnvCSV(key, fallback string) []string {
 	raw := getEnv(key, fallback)
 	if raw == "" {

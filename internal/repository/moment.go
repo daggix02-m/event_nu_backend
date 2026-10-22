@@ -58,7 +58,6 @@ func (r *MomentRepository) GetByID(ctx context.Context, id string) (*domain.Mome
 		FROM moments WHERE id = $1`, id))
 }
 
-// ListByEvent returns moments for a published event, newest first.
 func (r *MomentRepository) ListByEvent(ctx context.Context, eventID string, limit, offset int) ([]*domain.Moment, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT `+momentColumns+`

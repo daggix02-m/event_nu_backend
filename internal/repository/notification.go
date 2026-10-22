@@ -106,8 +106,6 @@ func (r *NotificationRepository) MarkRead(ctx context.Context, userID, id string
 	return nil
 }
 
-// MarkAllRead marks every unread notification for the user read; returns how
-// many were updated.
 func (r *NotificationRepository) MarkAllRead(ctx context.Context, userID string) (int64, error) {
 	tag, err := r.q(ctx).Exec(ctx, `
 		UPDATE notifications SET read_at = now()

@@ -131,7 +131,6 @@ func main() {
 		logger.Info("event published fanout disabled (KAFKA_BROKERS unset)")
 	}
 
-	// Phase 33: recompute the daily analytics rollup + retention.
 	analyticsConsumer := worker.NewAnalyticsRollupConsumer(
 		logger,
 		cfg,

@@ -52,8 +52,6 @@ func Idempotency(keys IdempotencyStore) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Read the body exactly once so we can hash it, then restore it so
-			// the downstream handler decodes the same bytes the client sent.
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				writeBadRequest(w, "unable_to_read_body", "Could not read the request body.")
@@ -79,7 +77,7 @@ func Idempotency(keys IdempotencyStore) func(http.Handler) http.Handler {
 							writeConflict(w, "idempotency_key_reused",
 								"idempotency key already used for a different request")
 						}
-					default: // in_progress
+					default:
 						writeConflict(w, "idempotency_in_progress",
 							"a request with this idempotency key is already in progress")
 					}
@@ -94,9 +92,7 @@ func Idempotency(keys IdempotencyStore) func(http.Handler) http.Handler {
 
 			if rec.status < http.StatusBadRequest {
 				if cerr := keys.Complete(r.Context(), userID, key, repository.IdempotencyCompleted, rec.status, rec.body); cerr != nil {
-					// The response is already on the wire; it cannot be rewritten
-					// to a 5xx. The leftover in_progress row is reaped when the
-					// key expires (TTL), so a future retry ultimately succeeds.
+
 					_ = cerr
 				}
 			}
@@ -113,16 +109,12 @@ func idempotencyHash(operation string, body []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// replay writes the previously stored response body/status verbatim.
 func replay(w http.ResponseWriter, rec *repository.IdempotencyRecord) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(rec.ResponseCode)
 	_, _ = w.Write(rec.ResponseBody)
 }
 
-// bufferingRecorder captures the status code and response body while still
-// forwarding every write to the underlying writer, so BeginRequestTx sees the
-// real status and decides commit vs rollback correctly.
 type bufferingRecorder struct {
 	http.ResponseWriter
 	status      int

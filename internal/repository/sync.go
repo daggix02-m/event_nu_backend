@@ -14,15 +14,6 @@ import (
 // driven port (hexagonal: adapters depend on ports, never the reverse).
 var _ domain.SyncStore = (*SyncRepository)(nil)
 
-// SyncRepository serves the cursor-based offline delta endpoint (Phase 16).
-//
-// Every ChangedSince method takes a `limit` and internally reads limit+1 rows,
-// so the caller can distinguish "page full" (more rows exist) from "domain
-// exhausted" without a second count query. Rows are emitted in (updated_at, id)
-// order, the same order the client resumes from with the returned cursor. The
-// cursor is inclusive (updated_at >= since): re-polling with the previous
-// response's cursor re-emits the boundary row, which is how same-timestamp
-// batches make guaranteed forward progress.
 type SyncRepository struct {
 	pool *pgxpool.Pool
 }
@@ -35,8 +26,6 @@ func (r *SyncRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-// pageOf trims a limit+1 row set to `limit` and derives the read-horizon
-// watermark and has-more flag.
 func pageOf[T any](rows []T, since time.Time, limit int, stamp func(T) time.Time) domain.SyncPage[T] {
 	wm := since
 	for _, r := range rows {
@@ -234,9 +223,6 @@ func (r *SyncRepository) ReviewsChangedSince(ctx context.Context, since time.Tim
 	return pageOf(out, since, limit, func(rev *domain.Review) time.Time { return rev.UpdatedAt }), nil
 }
 
-// DeletedIDsChangedSince returns soft-deleted row ids (and their change
-// timestamps) for a delete-capable domain via the privileged
-// sync_deleted_ids() helper. Limit semantics match the ChangedSince methods.
 func (r *SyncRepository) DeletedIDsChangedSince(ctx context.Context, since time.Time, domainName string, limit int) (domain.SyncPage[domain.DeletedChange], error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT row_id, changed_at FROM sync_deleted_ids($1, $2, $3)`,

@@ -14,11 +14,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Order-state sentinels and domain.OrderItemInput live in package domain
-// (hexagonal slice 3).
-
-// OrderRepository manages orders, their items, issued tickets, and the
-// atomic reserve/release/check-in SQL helpers.
 type OrderRepository struct {
 	pool *pgxpool.Pool
 }
@@ -31,16 +26,13 @@ func (r *OrderRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-// newUUID is an RFC4122 v4 UUID from crypto/rand (no external dependency).
-// Used to pre-generate ticket ids so the QR code_hash (which embeds the id)
-// can be computed before INSERT.
 func newUUID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", fmt.Errorf("generate uuid: %w", err)
 	}
-	b[6] = (b[6] & 0x0f) | 0x40 // version 4
-	b[8] = (b[8] & 0x3f) | 0x80 // RFC4122 variant
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), nil
 }
 
@@ -104,10 +96,6 @@ func (r *OrderRepository) selectOrderItems(ctx context.Context, q database.Queri
 	return out, nil
 }
 
-// CreateOrder atomically reserves inventory for every line and inserts the
-// pending order + items in one transaction (the request tx when present).
-// Any unavailable line (sold out / sales closed / mismatched currency) aborts
-// the whole order; the reservation is rolled back with the tx.
 func (r *OrderRepository) CreateOrder(ctx context.Context, userID, eventID string, inputs []domain.OrderItemInput) (*domain.Order, error) {
 	tx, owned, err := database.Tx(ctx, r.pool)
 	if err != nil {
@@ -216,7 +204,6 @@ func (r *OrderRepository) GetOrderByID(ctx context.Context, orderID string) (*do
 	return order, nil
 }
 
-// ListByUser returns the caller's orders, newest first.
 func (r *OrderRepository) ListByUser(ctx context.Context, userID string, limit, offset int) ([]*domain.Order, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT `+orderColumns+`
@@ -251,10 +238,6 @@ func (r *OrderRepository) CountByUser(ctx context.Context, userID string) (int, 
 	return n, nil
 }
 
-// Cancel flips the buyer's own pending order to cancelled and releases every
-// reserved tier back to inventory, atomically. Non-pending or foreign orders
-// are rejected. Pending orders can never hold issued tickets, so there is
-// nothing else to unwind.
 func (r *OrderRepository) Cancel(ctx context.Context, userID, orderID string) error {
 	tx, owned, err := database.Tx(ctx, r.pool)
 	if err != nil {
@@ -393,7 +376,7 @@ func (r *OrderRepository) FailPayment(ctx context.Context, orderID, provider, pr
 		if status == "paid" {
 			return domain.ErrOrderAlreadyPaid
 		}
-		return nil // already failed/cancelled — nothing to release
+		return nil
 	}
 
 	items, err := r.selectOrderItems(ctx, tx, orderID)
@@ -414,7 +397,6 @@ func (r *OrderRepository) FailPayment(ctx context.Context, orderID, provider, pr
 	return nil
 }
 
-// ListTicketsByUser returns the caller's active (issued) tickets.
 func (r *OrderRepository) ListTicketsByUser(ctx context.Context, userID string) ([]*domain.Ticket, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT `+ticketColumns+`
@@ -463,8 +445,6 @@ func (r *OrderRepository) GetTicketByID(ctx context.Context, ticketID string) (*
 	return &t, nil
 }
 
-// CheckIn runs the server-authoritative SQL check-in helper and returns its
-// machine status: ok | already_used | not_found | forbidden.
 func (r *OrderRepository) CheckIn(ctx context.Context, codeHash, eventID string) (string, error) {
 	var status string
 	err := r.q(ctx).QueryRow(ctx, `SELECT check_in_ticket($1, $2)`, codeHash, eventID).Scan(&status)

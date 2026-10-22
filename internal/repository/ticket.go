@@ -12,8 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// TicketTypeRepository manages event ticket tiers. quantity_sold is only ever
-// moved by the reserve/release SQL helpers — this repository never writes it.
 type TicketTypeRepository struct {
 	pool *pgxpool.Pool
 }
@@ -73,9 +71,6 @@ func (r *TicketTypeRepository) GetByID(ctx context.Context, id string) (*domain.
 		FROM ticket_types WHERE id = $1`, id))
 }
 
-// Update edits the mutable fields of an organizer-owned tier. quantity_sold
-// and event_id are intentionally excluded (inventory only moves via the SQL
-// helpers; re-targeting a tier would break the purchase chain).
 func (r *TicketTypeRepository) Update(ctx context.Context, tt *domain.TicketType) (*domain.TicketType, error) {
 	return scanTicketType(r.q(ctx).QueryRow(ctx, `
 		UPDATE ticket_types SET

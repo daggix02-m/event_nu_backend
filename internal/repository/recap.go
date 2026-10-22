@@ -32,9 +32,6 @@ func (r *RecapRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-// ActivityAt returns the newest source timestamp (moments/reviews/sessions/
-// RSVPs) for an event, or the Unix epoch when nothing exists yet. A cached
-// recap is fresh while its generated_at is at or after this watermark.
 func (r *RecapRepository) ActivityAt(ctx context.Context, eventID string) (time.Time, error) {
 	var at time.Time
 	err := r.q(ctx).QueryRow(ctx, `SELECT event_recap_activity($1)`, eventID).Scan(&at)
@@ -44,8 +41,6 @@ func (r *RecapRepository) ActivityAt(ctx context.Context, eventID string) (time.
 	return at, nil
 }
 
-// GetCached returns the cached recap for an event, or (nil, nil) when none
-// exists yet.
 func (r *RecapRepository) GetCached(ctx context.Context, eventID string) (*domain.EventRecap, error) {
 	var raw []byte
 	var generatedAt time.Time
@@ -65,8 +60,6 @@ func (r *RecapRepository) GetCached(ctx context.Context, eventID string) (*domai
 	return &domain.EventRecap{EventID: eventID, Data: data, GeneratedAt: generatedAt}, nil
 }
 
-// CachePut stores (or refreshes) the cached recap for a published event via the
-// definer helper.
 func (r *RecapRepository) CachePut(ctx context.Context, eventID string, data domain.RecapData) error {
 	raw, err := json.Marshal(data)
 	if err != nil {

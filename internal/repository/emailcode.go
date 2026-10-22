@@ -31,7 +31,6 @@ func (r *EmailCodeRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-// Create stores a one-time code by hash.
 func (r *EmailCodeRepository) Create(ctx context.Context, userID, purpose, codeHash string, expiresAt time.Time, maxAttempts int) error {
 	_, err := r.q(ctx).Exec(ctx, `
 		INSERT INTO email_codes (user_id, purpose, code_hash, expires_at, max_attempts)
@@ -43,9 +42,6 @@ func (r *EmailCodeRepository) Create(ctx context.Context, userID, purpose, codeH
 	return nil
 }
 
-// Consume attempts to redeem a code. It atomically bumps the attempt counter
-// and returns whether the code was valid. On success the row is consumed.
-// Returns a typed error for invalid/expired/exhausted cases.
 func (r *EmailCodeRepository) Consume(ctx context.Context, codeHash, purpose string) (string, error) {
 	tx, isNew, err := database.Tx(ctx, r.pool)
 	if err != nil {

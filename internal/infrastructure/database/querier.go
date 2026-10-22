@@ -18,12 +18,10 @@ type Querier interface {
 
 type txKey struct{}
 
-// ContextWithTx stores a request transaction in the context.
 func ContextWithTx(ctx context.Context, tx pgx.Tx) context.Context {
 	return context.WithValue(ctx, txKey{}, tx)
 }
 
-// TxFromContext returns the request transaction, if any.
 func TxFromContext(ctx context.Context) (pgx.Tx, bool) {
 	tx, ok := ctx.Value(txKey{}).(pgx.Tx)
 	return tx, ok
@@ -38,9 +36,6 @@ func QuerierFromContext(ctx context.Context, pool *pgxpool.Pool) Querier {
 	return pool
 }
 
-// Tx returns the request transaction when one is active; otherwise it begins a
-// new one. The second return value reports whether the caller owns the
-// transaction (and must commit/rollback it).
 func Tx(ctx context.Context, pool *pgxpool.Pool) (pgx.Tx, bool, error) {
 	if tx, ok := TxFromContext(ctx); ok {
 		return tx, false, nil

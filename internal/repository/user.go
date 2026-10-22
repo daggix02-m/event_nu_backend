@@ -102,9 +102,6 @@ func (r *UserRepository) UpdateVerified(ctx context.Context, id string) error {
 	return nil
 }
 
-// UpdateProfile partially updates a user's public profile. Nil fields keep
-// their existing value (COALESCE), so callers PATCH only what changed. The
-// username conflict is surfaced as a 409 username_taken.
 func (r *UserRepository) UpdateProfile(ctx context.Context, id string, username, bio, photoURL *string) (*domain.User, error) {
 	row := r.q(ctx).QueryRow(ctx, `
 		UPDATE users
@@ -126,9 +123,6 @@ func (r *UserRepository) UpdateProfile(ctx context.Context, id string, username,
 	return user, nil
 }
 
-// CompleteOnboarding stamps onboarding_completed_at for the user. COALESCE
-// keeps the stamp exactly-once: a second call (skip after a finished flow, or
-// a double-submitted skip) never overwrites the original timestamp.
 func (r *UserRepository) CompleteOnboarding(ctx context.Context, id string) (*domain.User, error) {
 	row := r.q(ctx).QueryRow(ctx, `
 		UPDATE users
@@ -139,9 +133,6 @@ func (r *UserRepository) CompleteOnboarding(ctx context.Context, id string) (*do
 	return scanUser(row)
 }
 
-// adminUserClause builds the admin user-directory WHERE clause. q matches
-// email or username (case-insensitive substring, LIKE wildcards escaped); role
-// and status are validated enums at the service boundary.
 func adminUserClause(q, role, status string) (string, []any) {
 	conds := []string{"deleted_at IS NULL"}
 	args := []any{}
@@ -188,7 +179,6 @@ func (r *UserRepository) ListAdmin(ctx context.Context, q, role, status string, 
 	return users, rows.Err()
 }
 
-// CountAdmin counts users matching the optional admin directory filters.
 func (r *UserRepository) CountAdmin(ctx context.Context, q, role, status string) (int, error) {
 	where, args := adminUserClause(q, role, status)
 	var total int
@@ -200,11 +190,6 @@ func (r *UserRepository) CountAdmin(ctx context.Context, q, role, status string)
 	return total, nil
 }
 
-// UpdateAdmin partially updates a user's directory fields from the console.
-// Nil fields keep their existing value (COALESCE). role/status must be
-// validated before this query: the explicit enum casts make an invalid value a
-// clean postgres error rather than a silent no-op. The username conflict is
-// surfaced as a 409 username_taken.
 func (r *UserRepository) UpdateAdmin(ctx context.Context, id string, username, bio, photoURL, role, status *string) (*domain.User, error) {
 	row := r.q(ctx).QueryRow(ctx, `
 		UPDATE users

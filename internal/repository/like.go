@@ -47,10 +47,6 @@ func (r *LikeRepository) Remove(ctx context.Context, eventID, userID string) err
 	return nil
 }
 
-// State returns the total like count for an event and whether the given user
-// (empty string for anonymous) is among the likers. The NULLIF guard keeps the
-// empty anonymous id out of uuid comparisons (” would raise a 22P02 and abort
-// the request tx); bool_or then folds the resulting NULL to false.
 func (r *LikeRepository) State(ctx context.Context, eventID, userID string) (int, bool, error) {
 	var total int
 	var liked bool

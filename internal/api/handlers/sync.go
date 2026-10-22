@@ -26,7 +26,6 @@ func NewSyncHandlers(app *api.Application, sync *service.SyncService) *SyncHandl
 	return &SyncHandlers{app: app, sync: sync}
 }
 
-// Pull streams changes since the cursor across the requested domains.
 func (h *SyncHandlers) Pull(w http.ResponseWriter, r *http.Request) {
 	opts, ok := parseSyncParams(w, r, h.app.Config.SyncMaxLimit)
 	if !ok {
@@ -65,9 +64,6 @@ func (h *SyncHandlers) Pull(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// parseSyncParams reads and validates cursor/domains/limit. Cursor defaults to
-// the epoch (a full bootstrap); domains default to the full whitelist; limit
-// defaults to the configured maximum.
 func parseSyncParams(w http.ResponseWriter, r *http.Request, maxLimit int) (service.PullOptions, bool) {
 	q := r.URL.Query()
 	var opts service.PullOptions
@@ -106,10 +102,6 @@ func parseSyncParams(w http.ResponseWriter, r *http.Request, maxLimit int) (serv
 	return opts, true
 }
 
-// toSyncPayload maps a change row to its wire DTO. Delete ops carry no payload
-// (the id is enough); upserts use the same shapes the plain CRUD endpoints
-// expose, minus per-user decorations (like/save state, follower counts, media
-// URLs) which the client re-fetches via the private domains on reconnect.
 func toSyncPayload(c service.Change) any {
 	if c.Op == "delete" {
 		return nil

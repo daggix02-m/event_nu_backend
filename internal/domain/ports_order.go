@@ -7,8 +7,6 @@ package domain
 
 import "fmt"
 
-// Order-state sentinels: the adapter reports the fact, the core decides the
-// API outcome (409/410/422 codes) via errors.Is.
 var (
 	ErrTicketSoldOut       = fmt.Errorf("ticket_type_sold_out")
 	ErrTicketSalesClosed   = fmt.Errorf("ticket_type_sales_closed")
@@ -17,8 +15,6 @@ var (
 	ErrOrderAlreadyPaid    = fmt.Errorf("order_already_paid")
 )
 
-// OrderItemInput is one requested line of an order under construction. The
-// core hands these values to the adapter, so the type is core-owned.
 type OrderItemInput struct {
 	TicketTypeID string
 	Quantity     int

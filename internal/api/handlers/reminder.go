@@ -20,7 +20,6 @@ func NewReminderHandlers(app *api.Application, remind *service.ReminderService) 
 	return &ReminderHandlers{app: app, remind: remind}
 }
 
-// Create sets a reminder ahead of a published event.
 func (h *ReminderHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -56,7 +55,6 @@ func (h *ReminderHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, dto.NotificationReadResult{Read: true})
 }
 
-// My lists the caller's reminders.
 func (h *ReminderHandlers) My(w http.ResponseWriter, r *http.Request) {
 	page, limit, ok := parsePagination(w, r)
 	if !ok {

@@ -18,7 +18,6 @@ import (
 // mapping (e.g. worker-context methods may claim "service").
 type RoleFor func(fullMethod string) string
 
-// RoleAlways pins a single role for the whole server.
 func RoleAlways(role string) RoleFor {
 	return func(string) string { return role }
 }

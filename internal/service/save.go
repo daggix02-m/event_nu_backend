@@ -12,7 +12,6 @@ import (
 
 const saveFolderMaxName = 100
 
-// saveStore is the save-repository surface SaveService depends on.
 type saveStore interface {
 	ListFolders(ctx context.Context, userID string) ([]*domain.SaveFolder, error)
 	CreateFolder(ctx context.Context, userID, name string) (*domain.SaveFolder, error)
@@ -35,8 +34,6 @@ func NewSaveService(saves saveStore, events eventStore) *SaveService {
 	return &SaveService{saves: saves, events: events}
 }
 
-// ---- folders ---------------------------------------------------------------
-
 func (s *SaveService) ListFolders(ctx context.Context, userID string) ([]*domain.SaveFolder, error) {
 	return s.saves.ListFolders(ctx, userID)
 }
@@ -52,7 +49,6 @@ func (s *SaveService) CreateFolder(ctx context.Context, userID, name string) (*d
 	return s.saves.CreateFolder(ctx, userID, name)
 }
 
-// requireFolder resolves a folder by id and asserts it belongs to the caller.
 func (s *SaveService) requireFolder(ctx context.Context, userID, folderID string) (*domain.SaveFolder, error) {
 	f, err := s.saves.GetFolder(ctx, folderID)
 	if err != nil {
@@ -86,8 +82,6 @@ func (s *SaveService) DeleteFolder(ctx context.Context, userID, folderID string)
 	// and are re-homed to "no folder" by the ON DELETE SET NULL FK.
 	return s.saves.DeleteFolder(ctx, folderID)
 }
-
-// ---- event saves -----------------------------------------------------------
 
 // SaveEvent saves a publicly visible event, optionally into a folder the caller
 // owns. The upsert makes re-saving idempotent. Because save_folders is a

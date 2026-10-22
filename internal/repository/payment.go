@@ -90,8 +90,6 @@ func (r *PaymentRepository) UpsertFromWebhook(ctx context.Context, p *domain.Pay
 	return nil
 }
 
-// GetByOrder returns the most recent ledger row for an order, or
-// shared.ErrNotFound when none exists yet.
 func (r *PaymentRepository) GetByOrder(ctx context.Context, orderID string) (*domain.Payment, error) {
 	return scanPayment(r.q(ctx).QueryRow(ctx, `
 		SELECT `+paymentColumns+`

@@ -21,22 +21,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// validUUID matches the canonical 8-4-4-4-12 hex form PostgreSQL's
-// gen_random_uuid() emits (any case). Ids are plain strings in this project
-// (no uuid dependency); the strict check runs before any DB call so a
-// malformed id can never surface as a 22P02 internal error. The REST handlers
-// enforce the same shape (internal/api/handlers/param.go).
 var validUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`).MatchString
 
-// mediaResolver is the consumer-side view of MediaService the gRPC transport
-// needs (interface segregation: one method, no more).
 type mediaResolver interface {
 	ResolveEventMedia(ctx context.Context, posterMediaID, teaserMediaID *string) (string, string, error)
 }
 
-// likeStateChecker / saveStateChecker are the same narrow views the REST
-// handlers use during enrichment; both states soft-fail with warned
-// defaults, exactly like the REST enrichment.
 type likeStateChecker interface {
 	State(ctx context.Context, eventID, userID string) (int, bool, error)
 }
@@ -45,9 +35,6 @@ type saveStateChecker interface {
 	State(ctx context.Context, userID, eventID string) (bool, *string, error)
 }
 
-// EventServer serves eventnu.v1.EventService over gRPC from the application's
-// EventService and MediaService. It is wired in cmd/api alongside the REST
-// server; tests drive it through bufconn.
 type EventServer struct {
 	eventnupb.UnimplementedEventServiceServer
 	event  *service.EventService
@@ -57,15 +44,10 @@ type EventServer struct {
 	logger *slog.Logger
 }
 
-// NewEventServer wires the gRPC event server from the services it shares with
-// the REST transport; main is the composition root that passes them. Likes
-// and saves may be nil (hermetic unit tests) — enrichment then yields the
-// wire defaults, as REST does when the services are unwired.
 func NewEventServer(event *service.EventService, media mediaResolver, likes likeStateChecker, saves saveStateChecker, logger *slog.Logger) *EventServer {
 	return &EventServer{event: event, media: media, likes: likes, saves: saves, logger: logger}
 }
 
-// GetEvent returns one event by id.
 func (s *EventServer) GetEvent(ctx context.Context, req *eventnupb.GetEventRequest) (*eventnupb.Event, error) {
 	id, ok := req.GetId(), true
 	if !validUUID(req.GetId()) {
@@ -81,7 +63,6 @@ func (s *EventServer) GetEvent(ctx context.Context, req *eventnupb.GetEventReque
 	return s.toEventDTO(ctx, e), nil
 }
 
-// ListEvents pages the public catalog.
 func (s *EventServer) ListEvents(ctx context.Context, req *eventnupb.ListEventsRequest) (*eventnupb.ListEventsResponse, error) {
 	page := int(req.GetPage())
 	limit := int(req.GetLimit())
@@ -119,11 +100,6 @@ func (s *EventServer) ListEvents(ctx context.Context, req *eventnupb.ListEventsR
 	}, nil
 }
 
-// ListMyEvents serves the caller's organizer events. This is the protected
-// method of the proto contract: REST's RequireAuth middleware rejects
-// anything without a resolvable identity (missing or invalid token — no
-// OptionalAuth fallback here), so the gRPC surface meets the same bar with
-// UNAUTHENTICATED before any query runs.
 func (s *EventServer) ListMyEvents(ctx context.Context, req *eventnupb.ListMyEventsRequest) (*eventnupb.ListMyEventsResponse, error) {
 	userID := UserID(ctx)
 	if userID == "" {
@@ -155,9 +131,6 @@ func (s *EventServer) ListMyEvents(ctx context.Context, req *eventnupb.ListMyEve
 	}, nil
 }
 
-// toEventDTO maps a domain event to the wire message. Media resolution is a
-// soft-fail: an unavailable media service degrades to empty URLs instead of
-// failing the read (same posture as the REST enrichment).
 func (s *EventServer) toEventDTO(ctx context.Context, e *domain.Event) *eventnupb.Event {
 	out := &eventnupb.Event{
 		Id:               e.ID,
@@ -189,11 +162,6 @@ func (s *EventServer) toEventDTO(ctx context.Context, e *domain.Event) *eventnup
 		}
 	}
 
-	// Per-user state: users perceive the same enrichment as REST — like
-	// count always resolves (anonymous callers see the public count with
-	// liked=false), save state is user-side. Either service failing degrades
-	// to defaults without failing the read (mirrors handlers'
-	// enrichedEventDTO).
 	userID := UserID(ctx)
 	if s.likes != nil {
 		count, liked, lerr := s.likes.State(ctx, e.ID, userID)

@@ -14,8 +14,6 @@ type contextKey string
 
 const RequestIDKey contextKey = "request_id"
 
-// RecoverPanic catches panics and converts them into 500 responses instead of
-// crashing the server.
 func RecoverPanic(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -31,8 +29,6 @@ func RecoverPanic(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// RequestID injects an X-Request-ID (generated if absent) into the context and
-// echoes it on the response, enabling request correlation across logs.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get("X-Request-ID")
@@ -59,8 +55,6 @@ func (rr *responseRecorder) WriteHeader(status int) {
 	}
 }
 
-// LogRequest records one structured log line per request with duration,
-// status, and request ID.
 func LogRequest(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,8 +84,6 @@ func SecureHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// CORS allows the configured origins. For a JSON API used by mobile clients,
-// browser CORS matters only for the admin web app.
 func CORS(allowedOrigins map[string]struct{}) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +105,6 @@ func CORS(allowedOrigins map[string]struct{}) func(http.Handler) http.Handler {
 	}
 }
 
-// RequestTimeout bounds the total time a request may take.
 func RequestTimeout(d time.Duration) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

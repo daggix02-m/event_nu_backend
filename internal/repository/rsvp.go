@@ -42,8 +42,6 @@ func scanRsvp(row pgx.Row) (*domain.Rsvp, error) {
 	return &r, nil
 }
 
-// AttemptRSVP calls the atomic capacity helper. Returns ("ok", rsvp, nil) on
-// success and a machine-readable reason otherwise.
 func (r *RsvpRepository) AttemptRSVP(ctx context.Context, eventID, userID string, publicRsvp bool) (string, *domain.Rsvp, error) {
 	tx := r.q(ctx)
 	var status string
@@ -126,9 +124,6 @@ func (r *RsvpRepository) CountByUser(ctx context.Context, userID string) (int, e
 	return n, nil
 }
 
-// ListUserIDsByEvent returns (up to limit) user ids with an active RSVP to the
-// event, for fan-out notifications. The count applied guards against one event
-// blowing up fan-out; it runs under the service role so every RSVP is visible.
 func (r *RsvpRepository) ListUserIDsByEvent(ctx context.Context, eventID string, limit int) ([]string, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT user_id FROM event_rsvps

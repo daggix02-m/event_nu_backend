@@ -24,8 +24,6 @@ func (r *FollowRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-// Follow records a follow and reports whether the row was newly inserted
-// (false = the follow already existed).
 func (r *FollowRepository) Follow(ctx context.Context, userID, organizerID string) (bool, error) {
 	tag, err := r.q(ctx).Exec(ctx, `
 		INSERT INTO organizer_follows (user_id, organizer_id)
@@ -74,8 +72,6 @@ func (r *FollowRepository) FollowerIDs(ctx context.Context, organizerID string) 
 	return ids, nil
 }
 
-// State returns follower count and whether the given user (empty for
-// anonymous) follows. NULLIF keeps the empty anonymous id out of uuid casts.
 func (r *FollowRepository) State(ctx context.Context, organizerID, userID string) (int, bool, error) {
 	var total int
 	var followed bool

@@ -13,8 +13,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
-// mediaAssetStore is the repository surface MediaService depends on (mirrors
-// the other service stores).
 type mediaAssetStore interface {
 	CreateAsset(ctx context.Context, a *domain.MediaAsset) (*domain.MediaAsset, error)
 	GetAssetByID(ctx context.Context, id string) (*domain.MediaAsset, error)
@@ -25,10 +23,6 @@ type mediaAssetStore interface {
 	ListVariantsForMediaIDs(ctx context.Context, mediaIDs []string, variant, density string) (map[string]string, error)
 }
 
-// MediaService orchestrates the upload lifecycle: an upload intent creates a
-// pending asset and a presigned PUT URL; the client uploads the bytes, then
-// completes the intent to enqueue the processing job; the worker produces
-// variants and flips the asset to ready.
 type MediaService struct {
 	assets  mediaAssetStore
 	storage domain.ObjectStore
@@ -58,8 +52,6 @@ var allowedMediaKinds = map[string]bool{
 	domain.MediaKindStory:         true,
 }
 
-// UploadIntent validates the request and returns the pending asset plus a
-// presigned (or local) upload URL the client PUTs the bytes to.
 func (s *MediaService) UploadIntent(ctx context.Context, userID, kind, contentType string, sizeBytes int64) (*domain.MediaAsset, string, error) {
 	if !allowedMediaKinds[kind] {
 		return nil, "", shared.NewAppError("invalid_media_kind",
@@ -98,8 +90,6 @@ func (s *MediaService) UploadIntent(ctx context.Context, userID, kind, contentTy
 	return asset, uploadURL, nil
 }
 
-// CompleteUpload flips an owned, pending asset to processing and enqueues the
-// worker job (atomically in the caller's transaction).
 func (s *MediaService) CompleteUpload(ctx context.Context, userID, assetID string) (*domain.MediaAsset, error) {
 	asset, err := s.assets.GetAssetByID(ctx, assetID)
 	if err != nil {
@@ -135,9 +125,6 @@ func (s *MediaService) GetAsset(ctx context.Context, assetID string) (*domain.Me
 	return asset, variants, nil
 }
 
-// DeleteAsset soft-deletes an owned asset. Storage objects are removed
-// best-effort (orphaned objects are harmless: variant URLs stop being served
-// the moment the row disappears).
 func (s *MediaService) DeleteAsset(ctx context.Context, userID, assetID string) error {
 	asset, err := s.assets.GetAssetByID(ctx, assetID)
 	if err != nil {
@@ -161,8 +148,6 @@ func (s *MediaService) DeleteAsset(ctx context.Context, userID, assetID string) 
 	return nil
 }
 
-// ResolveEventMedia maps an event's poster/teaser media ids to served variant
-// URLs (card@1x). A media id that is not yet ready simply resolves to "".
 func (s *MediaService) ResolveEventMedia(ctx context.Context, posterID, teaserID *string) (posterURL, teaserURL string, err error) {
 	var lookup []string
 	for _, id := range []*string{posterID, teaserID} {
@@ -186,8 +171,6 @@ func (s *MediaService) ResolveEventMedia(ctx context.Context, posterID, teaserID
 	return posterURL, teaserURL, nil
 }
 
-// ResolveOrganizerLogo maps an organizer's logo media id to its served URL
-// (card@1x). A nil id or an asset that is not yet ready resolves to "".
 func (s *MediaService) ResolveOrganizerLogo(ctx context.Context, logoMediaID *string) (string, error) {
 	if logoMediaID == nil {
 		return "", nil
@@ -207,8 +190,6 @@ func newObjectToken() string {
 	return hex.EncodeToString(b)
 }
 
-// VariantKey derives the storage key for a produced variant, placed next to
-// the original so all objects belong to the same uploader prefix.
 func VariantKey(originalKey, variant, density, format string) string {
 	dir := path.Dir(originalKey)
 	base := path.Base(originalKey)

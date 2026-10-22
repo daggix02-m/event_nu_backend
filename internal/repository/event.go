@@ -30,9 +30,6 @@ const eventColumns = `id, organizer_id, venue_id, category_id, title, COALESCE(d
 	price_is_free, COALESCE(price_display, '') AS price_display, action_type, COALESCE(action_target, '') AS action_target, status, moderation_status, max_attendees,
 	poster_media_id, teaser_media_id, created_at, updated_at, deleted_at`
 
-// eventColumnsQualified is eventColumns aliased to `e` for queries that join
-// venues (full-text and proximity search), where bare column names are
-// ambiguous.
 const eventColumnsQualified = `e.id, e.organizer_id, e.venue_id, e.category_id, e.title, COALESCE(e.description, '') AS description, e.starts_at, e.ends_at,
 	e.price_is_free, COALESCE(e.price_display, '') AS price_display, e.action_type, COALESCE(e.action_target, '') AS action_target, e.status, e.moderation_status, e.max_attendees,
 	e.poster_media_id, e.teaser_media_id, e.created_at, e.updated_at, e.deleted_at`
@@ -71,8 +68,6 @@ func (r *EventRepository) GetByID(ctx context.Context, id string) (*domain.Event
 		FROM events WHERE id = $1 AND deleted_at IS NULL`, id))
 }
 
-// ListVisible returns published, non-blocked events matching filters, ordered
-// by FTS relevance when a query is present, else by start time.
 func (r *EventRepository) ListVisible(ctx context.Context, filters domain.EventFilters, limit, offset int) ([]*domain.Event, error) {
 	where, args, hasQuery := eventSearchClause(filters)
 	rows, err := r.q(ctx).Query(ctx, `
@@ -99,8 +94,6 @@ func (r *EventRepository) ListVisible(ctx context.Context, filters domain.EventF
 	return events, rows.Err()
 }
 
-// CountVisible returns the total number of published, non-blocked events
-// matching filters.
 func (r *EventRepository) CountVisible(ctx context.Context, filters domain.EventFilters) (int, error) {
 	where, args, _ := eventSearchClause(filters)
 	var total int
@@ -115,8 +108,6 @@ func (r *EventRepository) CountVisible(ctx context.Context, filters domain.Event
 	return total, nil
 }
 
-// SetModeration updates an event's moderation_status only (EventStatus is
-// deliberately untouched — moderation and lifecycle stay orthogonal).
 func (r *EventRepository) SetModeration(ctx context.Context, id, moderation string) error {
 	tag, err := r.q(ctx).Exec(ctx, `
 		UPDATE events SET moderation_status = $2, updated_at = now()
@@ -130,8 +121,6 @@ func (r *EventRepository) SetModeration(ctx context.Context, id, moderation stri
 	return nil
 }
 
-// adminEventClause builds the WHERE clause for the admin event list. Filters
-// are validated at the service boundary, so values here are trusted enums.
 func adminEventClause(status, moderation string) (string, []any) {
 	conds := []string{"deleted_at IS NULL"}
 	args := []any{}
@@ -146,9 +135,6 @@ func adminEventClause(status, moderation string) (string, []any) {
 	return strings.Join(conds, " AND "), args
 }
 
-// AdminList returns every event matching the optional status/moderation
-// filters, newest first. Unlike ListVisible there is no public published /
-// not-blocked restriction — the admin queue sees drafts and blocked events.
 func (r *EventRepository) AdminList(ctx context.Context, status, moderation string, limit, offset int) ([]*domain.Event, error) {
 	where, args := adminEventClause(status, moderation)
 	rows, err := r.q(ctx).Query(ctx, `
@@ -174,7 +160,6 @@ func (r *EventRepository) AdminList(ctx context.Context, status, moderation stri
 	return events, rows.Err()
 }
 
-// AdminCount counts events matching the optional admin filters.
 func (r *EventRepository) AdminCount(ctx context.Context, status, moderation string) (int, error) {
 	where, args := adminEventClause(status, moderation)
 	var total int
@@ -186,9 +171,6 @@ func (r *EventRepository) AdminCount(ctx context.Context, status, moderation str
 	return total, nil
 }
 
-// CountByOrganizer counts every non-deleted event for an organizer across all
-// lifecycle statuses. It mirrors the correlated subquery used on the admin
-// organizer list so the detail view and the list never disagree.
 func (r *EventRepository) CountByOrganizer(ctx context.Context, organizerID string) (int, error) {
 	var total int
 	err := r.q(ctx).QueryRow(ctx, `
@@ -200,9 +182,6 @@ func (r *EventRepository) CountByOrganizer(ctx context.Context, organizerID stri
 	return total, nil
 }
 
-// AdminListByOrganizer returns an organizer's events across all lifecycle
-// statuses, newest first, bounded by limit/offset. Used by the admin organizer
-// detail view ("recent events") — deliberately not restricted to published.
 func (r *EventRepository) AdminListByOrganizer(ctx context.Context, organizerID string, limit, offset int) ([]*domain.Event, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT `+eventColumns+`
@@ -226,8 +205,6 @@ func (r *EventRepository) AdminListByOrganizer(ctx context.Context, organizerID 
 	return events, rows.Err()
 }
 
-// ListByOrganizer returns an organizer's events matching an optional status
-// filter, newest starts_at first, bounded by limit/offset.
 func (r *EventRepository) ListByOrganizer(ctx context.Context, organizerID string, status string, limit, offset int) ([]*domain.Event, error) {
 	query := `SELECT ` + eventColumns + ` FROM events WHERE organizer_id = $1 AND deleted_at IS NULL`
 	args := []any{organizerID}
@@ -255,7 +232,6 @@ func (r *EventRepository) ListByOrganizer(ctx context.Context, organizerID strin
 	return events, rows.Err()
 }
 
-// CountByOrganizerFiltered returns the count of an organizer's events with an optional status filter.
 func (r *EventRepository) CountByOrganizerFiltered(ctx context.Context, organizerID string, status string) (int, error) {
 	query := `SELECT count(*) FROM events WHERE organizer_id = $1 AND deleted_at IS NULL`
 	args := []any{organizerID}
@@ -271,7 +247,6 @@ func (r *EventRepository) CountByOrganizerFiltered(ctx context.Context, organize
 	return total, nil
 }
 
-// ListByVenue returns published events at a venue (used by venue detail).
 func (r *EventRepository) ListByVenue(ctx context.Context, venueID string, limit, offset int) ([]*domain.Event, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT `+eventColumns+`
@@ -295,7 +270,6 @@ func (r *EventRepository) ListByVenue(ctx context.Context, venueID string, limit
 	return events, rows.Err()
 }
 
-// CountByVenue returns the number of published events at a venue.
 func (r *EventRepository) CountByVenue(ctx context.Context, venueID string) (int, error) {
 	var total int
 	err := r.q(ctx).QueryRow(ctx, `
@@ -341,8 +315,6 @@ func eventSearchClause(f domain.EventFilters) (string, []any, bool) {
 	return strings.Join(conds, " AND "), args, hasQuery
 }
 
-// eventSearchOrder returns the ORDER BY expression: relevance-first when a text
-// query is present, else plain time ordering.
 func eventSearchOrder(hasQuery bool) string {
 	if hasQuery {
 		return "ts_rank_cd(search_vector, plainto_tsquery('english', $1)) DESC,"

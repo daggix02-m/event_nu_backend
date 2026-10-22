@@ -7,7 +7,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
-// followStore is the follow-repository surface FollowService needs.
 type followStore interface {
 	Follow(ctx context.Context, userID, organizerID string) (bool, error)
 	Unfollow(ctx context.Context, userID, organizerID string) error
@@ -24,13 +23,10 @@ func NewFollowService(follows followStore, orgs organizerStore) *FollowService {
 	return &FollowService{follows: follows, orgs: orgs}
 }
 
-// SetNotifier optionally attaches the notification hook (nil-safe).
 func (s *FollowService) SetNotifier(n Notifier) {
 	s.notifier = n
 }
 
-// requireVisibleOrganizer resolves an organizer that is publicly visible (i.e.
-// active and not archived under the organizers_read_public policy).
 func (s *FollowService) requireVisibleOrganizer(ctx context.Context, organizerID string) (*domain.Organizer, error) {
 	org, err := s.orgs.GetOrganizerByID(ctx, organizerID)
 	if err != nil {
@@ -67,18 +63,14 @@ func (s *FollowService) Unfollow(ctx context.Context, userID, organizerID string
 	return s.follows.Unfollow(ctx, userID, organizerID)
 }
 
-// State returns the follower count and whether the user (empty = anonymous)
-// follows the organizer.
 func (s *FollowService) State(ctx context.Context, organizerID, userID string) (int, bool, error) {
 	return s.follows.State(ctx, organizerID, userID)
 }
 
-// GetOrganizer resolves the publicly visible organizer profile.
 func (s *FollowService) GetOrganizer(ctx context.Context, organizerID string) (*domain.Organizer, error) {
 	return s.requireVisibleOrganizer(ctx, organizerID)
 }
 
-// Profile resolves the organizer (publicly visible) with follow aggregates.
 func (s *FollowService) Profile(ctx context.Context, organizerID, userID string) (*domain.Organizer, int, bool, error) {
 	org, err := s.requireVisibleOrganizer(ctx, organizerID)
 	if err != nil {

@@ -12,7 +12,6 @@ import (
 
 const commentMaxChars = 2000
 
-// commentStore is the comment-repository surface CommentService depends on.
 type commentStore interface {
 	Create(ctx context.Context, c *domain.Comment) (*domain.Comment, error)
 	GetByID(ctx context.Context, id string) (*domain.Comment, error)
@@ -32,9 +31,6 @@ func NewCommentService(comments commentStore, events eventStore) *CommentService
 	return &CommentService{comments: comments, events: events}
 }
 
-// SetNotifier optionally attaches the notification hook (nil-safe). Wired only
-// once at application startup; kept separate from the constructor so tests
-// don't need to change when notifications are added.
 func (s *CommentService) SetNotifier(n Notifier) {
 	s.notifier = n
 }

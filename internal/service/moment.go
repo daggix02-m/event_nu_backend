@@ -32,13 +32,10 @@ func NewMomentService(moments momentStore, events eventStore) *MomentService {
 	return &MomentService{moments: moments, events: events}
 }
 
-// SetBadges optionally attaches the milestone-award hook (nil-safe).
 func (s *MomentService) SetBadges(b BadgeAwarder) {
 	s.badges = b
 }
 
-// Create adds a moment to a published event. The caller must hold an RSVP or
-// ticket, and the media asset must belong to them and be ready.
 func (s *MomentService) Create(ctx context.Context, userID, eventID, mediaAssetID, caption string) (*domain.Moment, error) {
 	caption = strings.TrimSpace(caption)
 
@@ -109,7 +106,6 @@ func (s *MomentService) Delete(ctx context.Context, userID, momentID string, adm
 	return shared.NewAppError("forbidden", "You can only delete your own moments.", http.StatusForbidden)
 }
 
-// ListAttendees returns the public_rsvp attendee directory for a published event.
 func (s *MomentService) ListAttendees(ctx context.Context, eventID string, page, limit int) (PageResult[*domain.MomentAttendee], error) {
 	if _, err := s.events.GetByID(ctx, eventID); err != nil {
 		return PageResult[*domain.MomentAttendee]{}, err

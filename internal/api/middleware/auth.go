@@ -11,8 +11,6 @@ import (
 
 const UserIDKey contextKey = "user_id"
 
-// RequireAuth validates the Bearer access token and injects the user ID into
-// the request context. Apply only to protected route groups.
 func RequireAuth(auth *service.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -26,10 +24,6 @@ func RequireAuth(auth *service.AuthService) func(http.Handler) http.Handler {
 	}
 }
 
-// RequireAdmin validates the Bearer token and re-verifies the admin role
-// server-side on every request. A demoted admin loses access immediately —
-// no wait for JWT expiry. Admin business actions stay in Go (they trigger
-// side effects + audits).
 func RequireAdmin(auth *service.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -52,9 +46,6 @@ func RequireAdmin(auth *service.AuthService) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Fetch the user from the database to re-verify the role.
-			// Never trust the JWT claim alone — a demoted admin must
-			// lose access before JWT_EXPIRY.
 			user, err := auth.GetUser(ctx, userID)
 			if err != nil {
 				writeServerError(w)
@@ -70,10 +61,6 @@ func RequireAdmin(auth *service.AuthService) func(http.Handler) http.Handler {
 	}
 }
 
-// OptionalAuth authenticates the request when a Bearer token is present but
-// never rejects anonymous callers. Used on public read routes that surface
-// per-user state (e.g. liked_by_me): a valid token personalizes the response,
-// a missing/invalid one degrades to the anonymous view instead of 401.
 func OptionalAuth(auth *service.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +72,7 @@ func OptionalAuth(auth *service.AuthService) func(http.Handler) http.Handler {
 			token := strings.TrimPrefix(header, "Bearer ")
 			userID, _, err := auth.ParseAccessToken(token)
 			if err != nil {
-				// Invalid token on an optional route: treat as anonymous.
+
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -111,7 +98,6 @@ func parseToken(w http.ResponseWriter, r *http.Request, auth *service.AuthServic
 	return userID, role, true
 }
 
-// UserID returns the authenticated user ID from the context, or "".
 func UserID(ctx context.Context) string {
 	id, _ := ctx.Value(UserIDKey).(string)
 	return id

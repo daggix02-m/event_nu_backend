@@ -12,8 +12,6 @@ type SaveFolder struct {
 	UpdatedAt time.Time
 }
 
-// Save records that a user saved an event, optionally into a folder. The
-// composite (user_id, event_id) key guarantees a single save per user/event.
 type Save struct {
 	UserID    string
 	EventID   string
@@ -28,11 +26,9 @@ type SaveWithEvent struct {
 	Save
 	EventTitle string
 	EventStart time.Time
-	EventTime  *time.Time // nil when the event is hidden
+	EventTime  *time.Time
 }
 
-// Share is a per-share-analytics row: who shared which event, through which
-// channel, from which surface (ref).
 type Share struct {
 	ID        string
 	UserID    string

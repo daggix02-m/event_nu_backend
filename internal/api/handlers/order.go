@@ -45,8 +45,7 @@ func (h *OrderHandlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	if h.pay != nil {
 		init, err := h.pay.Initiate(r.Context(), order)
 		if err != nil {
-			// A failed checkout rolls back the whole request transaction — the
-			// pending order and its reservations vanish with it.
+
 			h.app.AppError(w, r, err)
 			return
 		}
@@ -61,7 +60,6 @@ func (h *OrderHandlers) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusCreated, out)
 }
 
-// GetOrder (GET /orders/{id}) — the buyer or the event's organizer.
 func (h *OrderHandlers) GetOrder(w http.ResponseWriter, r *http.Request) {
 	orderID, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -76,7 +74,6 @@ func (h *OrderHandlers) GetOrder(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, toOrderDTO(order))
 }
 
-// MyOrders (GET /me/orders) — the caller's orders, newest first.
 func (h *OrderHandlers) MyOrders(w http.ResponseWriter, r *http.Request) {
 	page, limit, ok := parsePagination(w, r)
 	if !ok {
@@ -99,8 +96,6 @@ func (h *OrderHandlers) MyOrders(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CancelOrder (POST /orders/{id}/cancel) — the buyer cancels their own pending
-// order, releasing reserved inventory.
 func (h *OrderHandlers) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	orderID, ok := ParseUUIDParam(r, "id")
 	if !ok {

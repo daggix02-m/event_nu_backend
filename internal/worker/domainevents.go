@@ -14,7 +14,6 @@ import (
 // crashed worker whose claimed rows must become claimable again.
 const relayLease = 10 * time.Second
 
-// relayBatch caps the claim window per tick.
 const relayBatchSize = 25
 
 // DomainEventRelay bridges the transactional outbox to Kafka. The request

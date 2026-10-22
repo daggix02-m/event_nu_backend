@@ -35,7 +35,7 @@ func NewS3(endpoint, region, bucket, accessKey, secretKey, publicBase string) *S
 		BaseEndpoint: aws.String(endpoint),
 	}
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-		// MinIO and R2 both support path-style addressing.
+
 		o.UsePathStyle = true
 	})
 	return &S3{

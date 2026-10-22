@@ -4,7 +4,6 @@ import (
 	"context"
 )
 
-// likeStore is the like-repository surface LikeService depends on.
 type likeStore interface {
 	Add(ctx context.Context, eventID, userID string) error
 	Remove(ctx context.Context, eventID, userID string) error
@@ -36,7 +35,6 @@ func (s *LikeService) Remove(ctx context.Context, userID, eventID string) error 
 	return s.likes.Remove(ctx, eventID, userID)
 }
 
-// State returns the like count and whether the user liked the event.
 func (s *LikeService) State(ctx context.Context, eventID, userID string) (int, bool, error) {
 	return s.likes.State(ctx, eventID, userID)
 }

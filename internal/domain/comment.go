@@ -15,8 +15,6 @@ type Comment struct {
 	DeletedAt        *time.Time
 }
 
-// EventLike records that a user liked an event. The composite primary key
-// (event_id, user_id) guarantees at most one like per user per event.
 type EventLike struct {
 	EventID   string
 	UserID    string

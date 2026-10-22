@@ -87,7 +87,6 @@ func (r *OutboxRepository) ClaimBatch(ctx context.Context, batchSize int, lease 
 	return items, nil
 }
 
-// MarkSent records a successful send and appends to email_logs.
 func (r *OutboxRepository) MarkSent(ctx context.Context, id, messageID string) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {

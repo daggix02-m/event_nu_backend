@@ -28,8 +28,6 @@ func (r *SaveRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-// ---- folders ---------------------------------------------------------------
-
 const saveFolderColumns = "id, user_id, name, created_at, updated_at"
 
 func scanSaveFolder(row pgx.Row) (*domain.SaveFolder, error) {
@@ -102,8 +100,6 @@ func (r *SaveRepository) DeleteFolder(ctx context.Context, id string) error {
 	return nil
 }
 
-// ---- saves ------------------------------------------------------------------
-
 // SaveEvent upserts a save (idempotent under double-tap); ON CONFLICT updates
 // the folder so re-saving into a different folder moves the save.
 func (r *SaveRepository) SaveEvent(ctx context.Context, userID, eventID string, folderID *string) error {
@@ -129,11 +125,9 @@ func (r *SaveRepository) UnsaveEvent(ctx context.Context, userID, eventID string
 	return nil
 }
 
-// State reports whether the user saved the event and into which folder.
 func (r *SaveRepository) State(ctx context.Context, userID, eventID string) (bool, *string, error) {
 	var folderID *string
-	// NULLIF guards anonymous reads (userID == "") so the ::uuid cast sees NULL
-	// instead of erroring, mirroring LikeRepository.State.
+
 	err := r.q(ctx).QueryRow(ctx, `
 		SELECT folder_id
 		FROM saves

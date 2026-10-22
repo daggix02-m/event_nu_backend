@@ -10,10 +10,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Unary interceptors for the gRPC transport. The REST layer expresses the
-// same two responsibilities through middleware (request logging, panic
-// recovery); the gRPC counterpart is the interceptor chain.
-
 // LoggingInterceptor logs every unary call's method, duration, and result
 // code. Errors are logged once here — no service or handler duplicates it.
 func LoggingInterceptor(log *slog.Logger) grpc.UnaryServerInterceptor {

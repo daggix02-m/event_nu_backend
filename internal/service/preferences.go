@@ -19,24 +19,16 @@ type preferenceStore interface {
 	ActiveCategoryCount(ctx context.Context, categoryIDs []string) (int, error)
 }
 
-// onboardingUserStore is the user surface the preferences service needs to
-// stamp onboarding completion. Kept intentionally narrow for unit testing.
 type onboardingUserStore interface {
 	GetByID(ctx context.Context, id string) (*domain.User, error)
 	CompleteOnboarding(ctx context.Context, id string) (*domain.User, error)
 }
 
-// Preferences is the category-preference state returned to the client.
 type Preferences struct {
 	CategoryIDs []string
 	UpdatedAt   *time.Time
 }
 
-// PreferencesService owns the interactive onboarding + interests flow: reading
-// and replacing a user's category preferences, and stamping onboarding as
-// complete. Replacing preferences with at least one valid, active category
-// implicitly completes onboarding (a user who picks interests never gets
-// re-prompted); SkipOnboarding does the same without touching preferences.
 type PreferencesService struct {
 	prefs preferenceStore
 	users onboardingUserStore
@@ -46,8 +38,6 @@ func NewPreferencesService(prefs preferenceStore, users onboardingUserStore) *Pr
 	return &PreferencesService{prefs: prefs, users: users}
 }
 
-// Get returns the user's preferences plus their current profile (for the
-// onboarding_completed flag).
 func (s *PreferencesService) Get(ctx context.Context, userID string) (Preferences, *domain.User, error) {
 	ids, updatedAt, err := s.prefs.Get(ctx, userID)
 	if err != nil {
@@ -60,11 +50,6 @@ func (s *PreferencesService) Get(ctx context.Context, userID string) (Preference
 	return Preferences{CategoryIDs: ids, UpdatedAt: updatedAt}, user, nil
 }
 
-// Replace overwrites the user's category preferences. Input is normalized
-// (trimmed + deduplicated, order preserved) and must contain at least one id
-// that is a currently active category. When the user has not completed
-// onboarding yet, doing so here stamps it — picking your interests IS finishing
-// onboarding.
 func (s *PreferencesService) Replace(ctx context.Context, userID string, categoryIDs []string) (Preferences, *domain.User, error) {
 	ids := normalizeCategoryIDs(categoryIDs)
 	if len(ids) == 0 {
@@ -105,8 +90,6 @@ func (s *PreferencesService) SkipOnboarding(ctx context.Context, userID string) 
 	return s.users.CompleteOnboarding(ctx, userID)
 }
 
-// normalizeCategoryIDs trims whitespace and removes duplicates, preserving the
-// input order.
 func normalizeCategoryIDs(ids []string) []string {
 	seen := make(map[string]struct{}, len(ids))
 	out := make([]string, 0, len(ids))

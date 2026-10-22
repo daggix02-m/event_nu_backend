@@ -2,7 +2,6 @@ package dto
 
 import "time"
 
-// OrderCreateRequest is the order checkout payload (POST /events/{id}/orders).
 type OrderCreateRequest struct {
 	Items []OrderItemRequest `json:"items"`
 }
@@ -12,7 +11,6 @@ type OrderItemRequest struct {
 	Quantity     int    `json:"quantity"`
 }
 
-// OrderDTO is the wire shape of an order; items are always included.
 type OrderDTO struct {
 	ID            string         `json:"id"`
 	EventID       string         `json:"event_id"`
@@ -25,16 +23,12 @@ type OrderDTO struct {
 	UpdatedAt     time.Time      `json:"updated_at"`
 	PaidAt        *time.Time     `json:"paid_at"`
 	CancelledAt   *time.Time     `json:"cancelled_at"`
-	// PaymentProvider/ProviderRef surface the finalized provider state once a
-	// webhook has assigned it (orders columns). Payment is populated by the
-	// order-create response with the checkout the buyer should be sent to.
+
 	PaymentProvider *string         `json:"payment_provider,omitempty"`
 	ProviderRef     *string         `json:"provider_ref,omitempty"`
 	Payment         *PaymentInitDTO `json:"payment,omitempty"`
 }
 
-// PaymentInitDTO is the card-init result included in the order-create response
-// when a payment provider is configured: where to send the buyer to pay.
 type PaymentInitDTO struct {
 	Provider    string `json:"provider"`
 	ProviderRef string `json:"provider_ref"`
@@ -51,8 +45,6 @@ type OrderItemDTO struct {
 	Subtotal     int64  `json:"subtotal"`
 }
 
-// TicketDTO is an item of GET /me/tickets. QR carries the signed payload the
-// client encodes as the check-in code.
 type TicketDTO struct {
 	ID           string      `json:"id"`
 	OrderItemID  string      `json:"order_item_id"`
@@ -64,7 +56,6 @@ type TicketDTO struct {
 	QR           TicketQRDTO `json:"qr"`
 }
 
-// TicketQRDTO mirrors domain.TicketQRPayload for /me/tickets responses.
 type TicketQRDTO struct {
 	TicketID string `json:"ticket_id"`
 	EventID  string `json:"event_id"`
@@ -72,8 +63,6 @@ type TicketQRDTO struct {
 	HMAC     string `json:"hmac"`
 }
 
-// CheckInRequest is what a check-in device submits (POST /events/{id}/check-in):
-// the decoded fields of the scanned QR payload.
 type CheckInRequest struct {
 	TicketID string `json:"ticket_id"`
 	EventID  string `json:"event_id"`

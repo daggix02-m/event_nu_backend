@@ -56,7 +56,6 @@ func (r *MediaRepository) GetAssetByID(ctx context.Context, id string) (*domain.
 		SELECT `+mediaAssetColumns+` FROM media_assets WHERE id = $1`, id))
 }
 
-// SetStatus moves an asset between processing/ready/failed (owner or worker).
 func (r *MediaRepository) SetStatus(ctx context.Context, id, status string, errMsg *string) error {
 	tag, err := r.q(ctx).Exec(ctx, `
 		UPDATE media_assets SET status = $2, error_message = $3, updated_at = now()
@@ -70,8 +69,6 @@ func (r *MediaRepository) SetStatus(ctx context.Context, id, status string, errM
 	return nil
 }
 
-// MarkProcessed records the worker's output dimensions and flips status to
-// ready (or failed with a message).
 func (r *MediaRepository) MarkProcessed(ctx context.Context, id, status string, errMsg *string, width, height int, byteSize int64) error {
 	tag, err := r.q(ctx).Exec(ctx, `
 		UPDATE media_assets SET status = $2, error_message = $3, width = $4, height = $5, byte_size = $6,
@@ -86,8 +83,6 @@ func (r *MediaRepository) MarkProcessed(ctx context.Context, id, status string, 
 	return nil
 }
 
-// SoftDelete marks an asset deleted (owner or privileged). Ready-public reads
-// exclude deleted rows, so the effect is immediate.
 func (r *MediaRepository) SoftDelete(ctx context.Context, id string) error {
 	tag, err := r.q(ctx).Exec(ctx, `
 		UPDATE media_assets SET deleted_at = now(), updated_at = now()
@@ -147,9 +142,6 @@ func (r *MediaRepository) ListVariants(ctx context.Context, mediaID string) ([]d
 	return variants, rows.Err()
 }
 
-// ListVariantsForMediaIDs returns the cdn_url of a single variant spec across
-// many assets (used to resolve event poster/teaser URLs without per-row
-// queries). Missing variants are simply omitted.
 func (r *MediaRepository) ListVariantsForMediaIDs(ctx context.Context, mediaIDs []string, variant, density string) (map[string]string, error) {
 	if len(mediaIDs) == 0 {
 		return map[string]string{}, nil
@@ -215,7 +207,6 @@ func (r *MediaRepository) ClaimJobBatch(ctx context.Context, batchSize, maxAttem
 	return jobs, rows.Err()
 }
 
-// MarkJobCompleted finishes a job after its variants are stored.
 func (r *MediaRepository) MarkJobCompleted(ctx context.Context, id string) error {
 	_, err := r.q(ctx).Exec(ctx, `
 		UPDATE media_processing_jobs SET status = 'completed', updated_at = now()

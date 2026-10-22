@@ -14,15 +14,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Application carries every shared dependency. Handlers are methods on it —
-// no globals, trivially testable by swapping dependencies.
 type Application struct {
 	Logger *slog.Logger
 	Config config.Config
 	DB     *pgxpool.Pool
 
-	// RateLimiter is the shared in-memory fixed-window limiter for the auth
-	// endpoints. Created per app instance so tests get isolated state.
 	RateLimiter *middleware.Limiter
 
 	Auth      *service.AuthService
@@ -54,8 +50,6 @@ type Application struct {
 	Prefs     *service.PreferencesService
 	Analytics *service.AnalyticsService
 
-	// Storage backs the media pipeline (local files for dev/tests, S3/R2 for
-	// production). Exposed so handlers/workers can reach it when needed.
 	Storage domain.ObjectStore
 
 	// Idempotency backs the client-retryable write middleware. Repositories
@@ -63,8 +57,6 @@ type Application struct {
 	// transaction (a rollback undoes the record too).
 	Idempotency *repository.IdempotencyRepository
 
-	// Metrics backs the /metrics endpoint (process gauges + HTTP request
-	// counter). Created per app instance so tests get isolated state.
 	Metrics *metrics.Registry
 }
 
@@ -142,8 +134,6 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		Analytics:   service.NewAnalyticsService(repository.NewAnalyticsRepository(pool), cfg),
 	}
 
-	// Payment gateway (Phase 15): provider checkouts on order creation and the
-	// privileged webhook endpoint that drives order/ticket finalization.
 	app.Payment = service.NewPaymentService(
 		repository.NewOrderRepository(pool),
 		repository.NewPaymentRepository(pool),
@@ -153,23 +143,19 @@ func NewApp(logger *slog.Logger, cfg config.Config, pool *pgxpool.Pool) *Applica
 		cfg,
 	)
 
-	// Notification fan-out hooks: every create that should notify someone runs
-	// through these nil-safe notifiers (they are no-ops when not wired).
 	app.Comment.SetNotifier(app.Notify)
 	app.Rsvp.SetNotifier(app.Notify)
 	app.Follow.SetNotifier(app.Notify)
-	// Milestone badge hooks: best-effort awards on successful actions.
+
 	app.Rsvp.SetBadges(app.Badge)
 	app.Review.SetBadges(app.Badge)
 	app.Moment.SetBadges(app.Badge)
 	app.Order.SetBadges(app.Badge)
-	// RSVP fan-out (event-update notifications to attendees). No trigger today:
-	// only draft events are editable, and public events cannot change after
-	// going live. Wired so the capability is ready when live-event edits land.
+
 	app.Notify.SetRsvpStore(rsvps)
-	// Event media attachment validation (owned, ready, right kind).
+
 	app.Event.SetMediaStore(media)
-	// Admin media attachment validation for console-created content.
+
 	app.Admin.SetMediaStore(media)
 
 	return app

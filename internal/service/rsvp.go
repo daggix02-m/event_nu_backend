@@ -8,7 +8,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
-// rsvpStore is the rsvp-repository surface RsvpService needs.
 type rsvpStore interface {
 	AttemptRSVP(ctx context.Context, eventID, userID string, publicRsvp bool) (string, *domain.Rsvp, error)
 	CancelRSVP(ctx context.Context, userID, eventID string) error
@@ -29,19 +28,14 @@ func NewRsvpService(rsvps rsvpStore, events eventStore) *RsvpService {
 	return &RsvpService{rsvps: rsvps, events: events}
 }
 
-// SetNotifier optionally attaches the notification hook (nil-safe).
 func (s *RsvpService) SetNotifier(n Notifier) {
 	s.notifier = n
 }
 
-// SetBadges optionally attaches the milestone-award hook (nil-safe).
 func (s *RsvpService) SetBadges(b BadgeAwarder) {
 	s.badges = b
 }
 
-// Create reserves a seat for the caller on a publicly visible event. Capacity
-// and duplicate detection are atomic inside attempt_event_rsvp() at the SQL
-// layer; this method maps the outcome to API errors.
 func (s *RsvpService) Create(ctx context.Context, userID, eventID string, publicRsvp bool) (*domain.Rsvp, error) {
 	if _, err := s.events.GetByID(ctx, eventID); err != nil {
 		return nil, err
@@ -76,7 +70,6 @@ func (s *RsvpService) Cancel(ctx context.Context, userID, eventID string) error 
 	return s.rsvps.CancelRSVP(ctx, userID, eventID)
 }
 
-// State returns the caller's RSVP for an event, or nil when they are not going.
 func (s *RsvpService) State(ctx context.Context, userID, eventID string) (*domain.Rsvp, error) {
 	rsvp, err := s.rsvps.GetState(ctx, userID, eventID)
 	if err == shared.ErrNotFound {

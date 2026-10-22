@@ -147,7 +147,7 @@ func (s *AnalyticsService) Funnel(ctx context.Context, from, to time.Time, steps
 	if err != nil {
 		return nil, err
 	}
-	// Zero-fill steps with no rows so the dashboard renders a stable funnel.
+
 	byName := make(map[string]domain.FunnelStep, len(agg))
 	for _, a := range agg {
 		byName[a.EventName] = a

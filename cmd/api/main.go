@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	// .env is a dev convenience only; real environments provide env vars directly.
+
 	_ = godotenv.Load()
 
 	cfg, err := config.Load()
@@ -71,10 +71,13 @@ func main() {
 		}
 	}()
 
-	// gRPC transport: opt-in via GRPC_ADDR. It shares the same Application
-	// services as REST; an unset GRPC_ADDR keeps the deployment REST-only.
 	var grpcSrv *grpc.Server
 	if cfg.GRPCAddr != "" {
+		if grpcBindIsWildcard(cfg.GRPCAddr) {
+
+			logger.Warn("grpc bind spans all interfaces; internal-only gRPC relies on network isolation — do not publish this port publicly",
+				"addr", cfg.GRPCAddr)
+		}
 		grpcSrv = grpc.NewServer(
 			grpc.ChainUnaryInterceptor(
 				transportgrpc.RecoveryInterceptor(logger),
@@ -87,7 +90,7 @@ func main() {
 			),
 		)
 		eventnupb.RegisterEventServiceServer(grpcSrv, transportgrpc.NewEventServer(app.Event, app.Media, app.Like, app.Save, app.Logger))
-		eventgrpcreflection.Register(grpcSrv)
+		registerGRPCReflection(grpcSrv, cfg.AppEnv, logger)
 
 		lis, err := net.Listen("tcp", cfg.GRPCAddr)
 		if err != nil {
@@ -126,4 +129,27 @@ func newLogger(env string) *slog.Logger {
 		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
 	}
 	return slog.New(handler)
+}
+
+func grpcBindIsWildcard(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsUnspecified()
+	}
+	return false
+}
+
+func registerGRPCReflection(srv *grpc.Server, env string, logger *slog.Logger) {
+	if env != "development" {
+		logger.Info("grpc reflection disabled", "env", env)
+		return
+	}
+	eventgrpcreflection.Register(srv)
+	logger.Info("grpc reflection enabled (development only)")
 }

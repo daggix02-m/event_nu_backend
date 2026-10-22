@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-// TicketType is a purchasable tier of an event. Inventory lives in
-// quantity_sold (moved ONLY by the reserve/release SQL helpers), never by
-// application writes.
 type TicketType struct {
 	ID            string
 	EventID       string
@@ -27,9 +24,6 @@ type TicketType struct {
 	UpdatedAt     time.Time
 }
 
-// TicketTypeWithAvailability couples a tier with its public sale state. SoldOut
-// is derived (quantity_total non-null and quantity_sold reached); SalesOpen is
-// the window check. Both are computed at read time, never stored.
 type TicketTypeWithAvailability struct {
 	TicketType
 	SoldOut   bool
@@ -58,20 +52,16 @@ type Ticket struct {
 type TicketQRPayload struct {
 	TicketID string `json:"ticket_id"`
 	EventID  string `json:"event_id"`
-	IssuedAt string `json:"issued_at"` // RFC3339 UTC timestamp of issuance
-	HMAC     string `json:"hmac"`      // hex HMAC-SHA256
+	IssuedAt string `json:"issued_at"`
+	HMAC     string `json:"hmac"` // hex HMAC-SHA256
 }
 
-// TicketWithMeta couples a ticket with the human-readable tier/event names
-// (nil-tolerant join, mirroring RsvpWithEvent).
 type TicketWithMeta struct {
 	Ticket
 	TicketTypeName string
 	EventTitle     string
 }
 
-// TicketWithQR couples an issued ticket with the signed payload the client
-// encodes as the QR code.
 type TicketWithQR struct {
 	Ticket
 	Payload TicketQRPayload

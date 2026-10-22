@@ -12,7 +12,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
-// OrderHandlers exposes ticket types, orders, the ticket wallet, and check-in.
 type OrderHandlers struct {
 	app   *api.Application
 	order *service.OrderService
@@ -22,8 +21,6 @@ type OrderHandlers struct {
 func NewOrderHandlers(app *api.Application, order *service.OrderService, pay *service.PaymentService) *OrderHandlers {
 	return &OrderHandlers{app: app, order: order, pay: pay}
 }
-
-// ---- ticket types ------------------------------------------------------------
 
 // CreateTicketType (POST /events/{id}/ticket-types, organizer, idempotent).
 func (h *OrderHandlers) CreateTicketType(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +56,6 @@ func (h *OrderHandlers) CreateTicketType(w http.ResponseWriter, r *http.Request)
 	shared.WriteJSON(w, http.StatusCreated, toTicketTypeDTO(tt, false, false))
 }
 
-// ListTicketTypes (GET /events/{id}/ticket-types/manage, organizer).
 func (h *OrderHandlers) ListTicketTypes(w http.ResponseWriter, r *http.Request) {
 	eventID, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -78,7 +74,6 @@ func (h *OrderHandlers) ListTicketTypes(w http.ResponseWriter, r *http.Request) 
 	shared.WriteJSON(w, http.StatusOK, out)
 }
 
-// ListTicketTypesPublic (GET /events/{id}/ticket-types, public).
 func (h *OrderHandlers) ListTicketTypesPublic(w http.ResponseWriter, r *http.Request) {
 	eventID, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -97,7 +92,6 @@ func (h *OrderHandlers) ListTicketTypesPublic(w http.ResponseWriter, r *http.Req
 	shared.WriteJSON(w, http.StatusOK, out)
 }
 
-// UpdateTicketType (PATCH /events/{id}/ticket-types/{ticketTypeID}, organizer).
 func (h *OrderHandlers) UpdateTicketType(w http.ResponseWriter, r *http.Request) {
 	eventID, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -132,10 +126,6 @@ func (h *OrderHandlers) UpdateTicketType(w http.ResponseWriter, r *http.Request)
 	shared.WriteJSON(w, http.StatusOK, toTicketTypeDTO(tt, false, false))
 }
 
-// ---- ticket wallet + check-in ------------------------------------------------
-
-// MyTickets (GET /me/tickets) returns the caller's issued tickets with their
-// signed QR payloads.
 func (h *OrderHandlers) MyTickets(w http.ResponseWriter, r *http.Request) {
 	tickets, err := h.order.MyTickets(r.Context(), middleware.UserID(r.Context()))
 	if err != nil {
@@ -158,8 +148,6 @@ func (h *OrderHandlers) MyTickets(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, out)
 }
 
-// CheckIn (POST /events/{id}/check-in, organizer) verifies the scanned QR
-// payload and marks the ticket used.
 func (h *OrderHandlers) CheckIn(w http.ResponseWriter, r *http.Request) {
 	eventID, ok := ParseUUIDParam(r, "id")
 	if !ok {

@@ -72,9 +72,6 @@ func (r *ReviewRepository) Update(ctx context.Context, id string, rating int16, 
 		RETURNING `+reviewColumns, id, rating, body))
 }
 
-// SoftDeleteSoft via UPDATE is legal here: the owner still sees their own row
-// (reviews_select includes own rows) and public readers stop seeing it because
-// status leaves 'published'.
 func (r *ReviewRepository) Delete(ctx context.Context, id string) error {
 	_, err := r.q(ctx).Exec(ctx, `
 		UPDATE reviews

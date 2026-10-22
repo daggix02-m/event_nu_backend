@@ -11,9 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// AnalyticsRepository stores raw events, recomputes the daily rollup and
-// exposes the aggregations the admin dashboard reads (from the rollup table
-// only — raw events are worker-private).
 type AnalyticsRepository struct {
 	pool *pgxpool.Pool
 }
@@ -26,10 +23,6 @@ func (r *AnalyticsRepository) q(ctx context.Context) database.Querier {
 	return database.QuerierFromContext(ctx, r.pool)
 }
 
-// InsertBatch inserts events with a single attribution: userID is the
-// authenticated caller (empty = anonymous). The multi-row INSERT is one
-// statement so the whole batch commits or rolls back atomically with the
-// request transaction.
 func (r *AnalyticsRepository) InsertBatch(ctx context.Context, userID string, events []domain.AnalyticsEvent) (int, error) {
 	var b strings.Builder
 	b.WriteString("INSERT INTO analytics_events (session_id, event_name, user_id, properties) VALUES ")
@@ -71,14 +64,6 @@ func (r *AnalyticsRepository) RollupDay(ctx context.Context, day time.Time) (int
 	return int(tag.RowsAffected()), nil
 }
 
-// DailyMetrics returns the per-day admin series over the last `days` days
-// (window) plus the equal-length window immediately before it (previous), in
-// ascending day order — the 2×window the admin Overview needs to render real
-// day-series + Δ% deltas. All four metrics come from the business tables:
-// events_published reads events.published_at (a real per-day publish signal,
-// set atomically when a draft/cancelled event is published — see migration
-// 00024); the other three read the tables' created_at day buckets. No status
-// guesswork, no fabricated backfill.
 func (r *AnalyticsRepository) DailyMetrics(ctx context.Context, days int) ([]domain.DailyMetricRow, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		WITH days AS (
@@ -112,9 +97,6 @@ func (r *AnalyticsRepository) DailyMetrics(ctx context.Context, days int) ([]dom
 	return out, rows.Err()
 }
 
-// DeleteBefore removes raw events strictly older than the retention window.
-// The second conjunct (UTC date < utcToday) guarantees the current UTC day is
-// never touched, so a partially-rolled day can't lose events between rollups.
 func (r *AnalyticsRepository) DeleteBefore(ctx context.Context, cutoff time.Time, utcToday time.Time) (int64, error) {
 	tag, err := r.q(ctx).Exec(ctx, `
 		DELETE FROM analytics_events
@@ -127,7 +109,6 @@ func (r *AnalyticsRepository) DeleteBefore(ctx context.Context, cutoff time.Time
 	return tag.RowsAffected(), nil
 }
 
-// Usage returns the rollup rows for the last n days (most recent first).
 func (r *AnalyticsRepository) Usage(ctx context.Context, days int) ([]domain.DailyUsage, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT day, event_name, event_count, unique_users
@@ -150,9 +131,6 @@ func (r *AnalyticsRepository) Usage(ctx context.Context, days int) ([]domain.Dai
 	return out, rows.Err()
 }
 
-// Funnel aggregates the rollup table for the given event names between
-// inclusive UTC days. unique_users sums the per-day distinct counts, so it
-// may over-count a user active on multiple days (documented approximation).
 func (r *AnalyticsRepository) Funnel(ctx context.Context, from, to time.Time, eventNames []string) ([]domain.FunnelStep, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT event_name, sum(event_count), sum(unique_users)

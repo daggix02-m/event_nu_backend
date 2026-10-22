@@ -100,9 +100,6 @@ func (r *IdempotencyRepository) Get(ctx context.Context, userID, key string) (*I
 	return &rec, nil
 }
 
-// Complete marks a previously in-progress key as completed with the stored
-// status and response body. Runs in the same request transaction as the write
-// it guards, so a later rollback undoes the record too.
 func (r *IdempotencyRepository) Complete(ctx context.Context, userID, key, status string, code int, body []byte) error {
 	_, err := r.q(ctx).Exec(ctx, `
 		UPDATE idempotency_keys

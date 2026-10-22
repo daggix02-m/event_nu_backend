@@ -1,0 +1,555 @@
+{
+  "info": {
+    "name": "Event Nu Backend — standalone",
+    "_postman_id": "b1e2c3d4-0000-4000-8000-000000000001",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Standalone smoke test for the Event Nu Go backend (no frontend needed).\n\nRun order:\n  0 Health checks\n  1 Auth: Register -> Login (tokens are auto-stored)\n  2 Promote the account to admin once via SQL (see README), then the Admin requests\n  3 Organizer + catalog: admin creates the organizer -> venue -> event -> publish\n  4 Public reads and engagement\n\nVariables live in the 'Event Nu — local standalone' environment. Tokens and ids are captured automatically into environment variables by the request test scripts.\n\nEmail verification (POST /auth/verify) cannot be completed with EMAIL_PROVIDER=noop: the 6-digit code is only stored hashed. Everything else runs fully offline."
+  },
+  "variable": [
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0 Health",
+      "item": [
+        {
+          "name": "Healthz",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "host": ["{{base_url}}"],
+              "path": ["healthz"]
+            },
+            "description": "Process liveness. No auth, no database."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('liveness 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Readyz",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/readyz",
+              "host": ["{{base_url}}"],
+              "path": ["readyz"]
+            },
+            "description": "Readiness — fails if the database is unreachable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('readiness 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"username\": \"{{username}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Creates the account (is_verified=false with EMAIL_PROVIDER=noop) and enqueues the welcome + verification emails. Re-running with the same email returns 409 — change {{email}} in the environment between runs."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('register ok', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 409]));",
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.environment.set('user_id', body.id);",
+                  "if (body.user && body.user.id) pm.environment.set('user_id', body.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Returns access_token / refresh_token / user. The test script stores both tokens automatically."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('login 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.access_token) pm.collectionVariables.set('access_token', body.access_token);",
+                  "if (body.refresh_token) pm.collectionVariables.set('refresh_token', body.refresh_token);",
+                  "if (body.user && body.user.id) pm.environment.set('user_id', body.user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validate token",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "users", "me"]
+            },
+            "description": "Confirms the stored access token works before running protected requests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('me 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "refresh"]
+            },
+            "description": "Rotates the token pair; the new pair is stored automatically."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('refresh 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.access_token) pm.collectionVariables.set('access_token', body.access_token);",
+                  "if (body.refresh_token) pm.collectionVariables.set('refresh_token', body.refresh_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify email code (needs real provider)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"123456\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "verify"]
+            },
+            "description": "Cannot succeed with EMAIL_PROVIDER=noop: the code is hashed into the database and only travels via the Brevo email. Kept here to see the 400/404 error contract offline."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "logout"]
+            },
+            "description": "Run last in this folder. Invalidates the refresh session; a later Refresh returns 401."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1b Public reference data",
+      "item": [
+        {
+          "name": "List categories",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/categories",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "categories"]
+            },
+            "description": "Seeded category UUIDs (migration 00008). Captures the first id for event creation.",
+            "auth": { "type": "noauth" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('categories 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "const first = Array.isArray(body) ? body[0] : (body.data ? body.data[0] : null);",
+                  "if (first && first.id) pm.environment.set('category_id', first.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List events",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/events?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "events"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "description": "Public catalog, paginated envelope { data, pagination }.",
+            "auth": { "type": "noauth" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('events 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get event",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/events/{{event_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "events", "{{event_id}}"]
+            },
+            "description": "Run after the organizer flow has created an event. Bad ids return 400, missing ids 404.",
+            "auth": { "type": "noauth" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 Organizer setup (requires admin role)",
+      "item": [
+        {
+          "name": "Apply as organizer",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requested_name\": \"Test Organizer\",\n  \"requested_slug\": \"test-organizer\",\n  \"bio\": \"Standalone Postman testing\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizer-applications",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "organizer-applications"]
+            },
+            "description": "The democratic path (queue for admin review). The next request is the operator shortcut; either way an organizer record is needed before events can be created."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('apply ok', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 409]));",
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.environment.set('application_id', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin: provision organizer directly",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Organizer\",\n  \"slug\": \"test-organizer\",\n  \"bio\": \"Created via standalone Postman smoke test\",\n  \"owner_user_id\": \"{{user_id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/organizers",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "organizers"]
+            },
+            "description": "Operator shortcut: binds the organizer to {{user_id}} without the queue. Requires the DB admin promotion first (README step). If already provisioned, a 409 is expected and safe to ignore."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('organizer created or exists', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 409]));",
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.environment.set('organizer_id', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin: list applications",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/organizer-applications",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "organizer-applications"]
+            },
+            "description": "Admin directory listing — also proof the promotion + admin middleware work."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 Catalog lifecycle",
+      "item": [
+        {
+          "name": "Create venue",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Hall\",\n  \"address\": \"Bole Road, Addis Ababa\",\n  \"latitude\": 9.005401,\n  \"longitude\": 38.763611,\n  \"place_id\": \"\",\n  \"city\": \"Addis Ababa\",\n  \"country_code\": \"ET\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/venues",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "venues"]
+            },
+            "description": "Needs an approved organizer. Replace the flagged sample values with anything you want."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('venue created', () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.environment.set('venue_id', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"venue_id\": \"{{venue_id}}\",\n  \"category_id\": \"{{category_id}}\",\n  \"title\": \"Postman smoke event\",\n  \"description\": \"Created by the standalone Postman collection\",\n  \"starts_at\": \"2026-12-01T18:00:00Z\",\n  \"price_is_free\": true,\n  \"max_attendees\": 100\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/events",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "events"]
+            },
+            "description": "Draft event owned by the caller's organizer. action_type defaults to open_entry when omitted; ends_at / max_attendees are optional."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('event created', () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.environment.set('event_id', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Publish event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/events/{{event_id}}/publish",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "events", "{{event_id}}", "publish"]
+            },
+            "description": "Draft -> published. After this the event appears in the public List events."
+          }
+        },
+        {
+          "name": "List my events",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/me/events",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "me", "events"]
+            },
+            "description": "Protected listing — anonymous calls get 401 here, running it logged-out is a negative test."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 Engagement",
+      "item": [
+        {
+          "name": "Like event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/events/{{event_id}}/like",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "events", "{{event_id}}", "like"]
+            },
+            "description": "Idempotent-ish toggle-on; DELETE on the same path removes the like."
+          }
+        },
+        {
+          "name": "Save event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/events/{{event_id}}/save",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "events", "{{event_id}}", "save"]
+            },
+            "description": "Saves to the default folder; empty body accepted."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -19,7 +19,6 @@ func NewNotificationHandlers(app *api.Application, notes *service.NotificationSe
 	return &NotificationHandlers{app: app, notes: notes}
 }
 
-// List returns the caller's inbox, newest first.
 func (h *NotificationHandlers) List(w http.ResponseWriter, r *http.Request) {
 	page, limit, ok := parsePagination(w, r)
 	if !ok {
@@ -56,7 +55,6 @@ func (h *NotificationHandlers) Read(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, dto.NotificationReadResult{Read: true})
 }
 
-// ReadAll marks every notification read and returns how many changed.
 func (h *NotificationHandlers) ReadAll(w http.ResponseWriter, r *http.Request) {
 	count, err := h.notes.ReadAll(r.Context(), middleware.UserID(r.Context()))
 	if err != nil {

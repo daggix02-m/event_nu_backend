@@ -12,7 +12,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/validator"
 )
 
-// orderStore is the order-repository surface OrderService needs.
 type orderStore interface {
 	CreateOrder(ctx context.Context, userID, eventID string, inputs []domain.OrderItemInput) (*domain.Order, error)
 	GetOrderByID(ctx context.Context, orderID string) (*domain.Order, error)
@@ -25,7 +24,6 @@ type orderStore interface {
 	GetTicketByID(ctx context.Context, ticketID string) (*domain.TicketWithMeta, error)
 }
 
-// ticketTypeStore is the ticket-types repository surface OrderService needs.
 type ticketTypeStore interface {
 	Create(ctx context.Context, tt *domain.TicketType) (*domain.TicketType, error)
 	GetByID(ctx context.Context, id string) (*domain.TicketType, error)
@@ -47,13 +45,10 @@ func NewOrderService(orders orderStore, types ticketTypeStore, events eventStore
 	return &OrderService{orders: orders, types: types, events: events, orgs: orgs, qrSecret: qrSecret}
 }
 
-// SetBadges optionally attaches the milestone-award hook (nil-safe).
 func (s *OrderService) SetBadges(b BadgeAwarder) {
 	s.badges = b
 }
 
-// requireEventOrganizer resolves the caller's active organizer and verifies it
-// owns the event (403 otherwise), returning the event for good measure.
 func (s *OrderService) requireEventOrganizer(ctx context.Context, userID, eventID string) (*domain.Event, error) {
 	org, err := s.orgs.GetOrganizerByOwner(ctx, userID)
 	if err != nil {
@@ -75,9 +70,6 @@ func (s *OrderService) requireEventOrganizer(ctx context.Context, userID, eventI
 	return ev, nil
 }
 
-// ---- ticket types ------------------------------------------------------------
-
-// CreateTicketType adds a purchasable tier to an organizer-owned event.
 func (s *OrderService) CreateTicketType(ctx context.Context, userID string, tt *domain.TicketType) (*domain.TicketType, error) {
 	if _, err := s.requireEventOrganizer(ctx, userID, tt.EventID); err != nil {
 		return nil, err
@@ -90,8 +82,6 @@ func (s *OrderService) CreateTicketType(ctx context.Context, userID string, tt *
 	return s.types.Create(ctx, tt)
 }
 
-// ListTicketTypes returns every tier of an organizer-owned event, decorated
-// with sold-out and sales-window availability.
 func (s *OrderService) ListTicketTypes(ctx context.Context, userID, eventID string) ([]*domain.TicketTypeWithAvailability, error) {
 	if _, err := s.requireEventOrganizer(ctx, userID, eventID); err != nil {
 		return nil, err
@@ -103,8 +93,6 @@ func (s *OrderService) ListTicketTypes(ctx context.Context, userID, eventID stri
 	return decorateAvailability(tiers, time.Now()), nil
 }
 
-// ListTicketTypesPublic returns the active tiers of a publicly visible event,
-// each decorated with sold-out and sales-window availability.
 func (s *OrderService) ListTicketTypesPublic(ctx context.Context, eventID string) ([]*domain.TicketTypeWithAvailability, error) {
 	if _, err := s.events.GetByID(ctx, eventID); err != nil {
 		return nil, err
@@ -127,8 +115,6 @@ func decorateAvailability(tiers []*domain.TicketType, now time.Time) []*domain.T
 	return out
 }
 
-// UpdateTicketType applies an organizer's edits to a tier (price snapshot rules
-// mean quantity_sold/event_id can never change here).
 func (s *OrderService) UpdateTicketType(ctx context.Context, userID, eventID, ticketTypeID string, up *domain.TicketType) (*domain.TicketType, error) {
 	if _, err := s.requireEventOrganizer(ctx, userID, eventID); err != nil {
 		return nil, err
@@ -150,10 +136,6 @@ func (s *OrderService) UpdateTicketType(ctx context.Context, userID, eventID, ti
 	return s.types.Update(ctx, up)
 }
 
-// ---- orders ------------------------------------------------------------------
-
-// CreateOrder validates a purchasable event, then atomically reserves inventory
-// and creates the pending order. Unavailable lines abort the whole order.
 func (s *OrderService) CreateOrder(ctx context.Context, userID, eventID string, items []domain.OrderItemInput) (*domain.Order, error) {
 	if len(items) == 0 {
 		return nil, shared.NewAppError("validation_error", "An order must contain at least one ticket.", http.StatusUnprocessableEntity)
@@ -201,10 +183,8 @@ func (s *OrderService) MyOrders(ctx context.Context, userID string, page, limit 
 	return PageResult[*domain.Order]{Items: items, Total: total}, nil
 }
 
-// CancelOrder cancels the buyer's own pending order and releases inventory.
 func (s *OrderService) CancelOrder(ctx context.Context, userID, orderID string) (*domain.Order, error) {
-	// Fetch first so a valid cancel can return the final order state and a
-	// foreign/missing order 404s before any mutation.
+
 	order, err := s.orders.GetOrderByID(ctx, orderID)
 	if err != nil {
 		return nil, err
@@ -222,8 +202,6 @@ func (s *OrderService) CancelOrder(ctx context.Context, userID, orderID string) 
 	return order, nil
 }
 
-// ConfirmPaid flips a pending order to paid and issues its tickets. Intended
-// for the Phase 15 payment webhook (privileged context); exposed for wiring.
 func (s *OrderService) ConfirmPaid(ctx context.Context, orderID, provider, providerRef string) (*domain.Order, []*domain.Ticket, error) {
 	order, tickets, err := s.orders.ConfirmPaid(ctx, orderID, provider, providerRef)
 	if err != nil {
@@ -238,9 +216,6 @@ func (s *OrderService) ConfirmPaid(ctx context.Context, orderID, provider, provi
 	return order, tickets, nil
 }
 
-// ---- tickets / check-in ------------------------------------------------------
-
-// MyTickets returns the caller's issued tickets with signed QR payloads.
 func (s *OrderService) MyTickets(ctx context.Context, userID string) ([]*domain.TicketWithQR, error) {
 	tickets, err := s.orders.ListTicketsByUser(ctx, userID)
 	if err != nil {
@@ -293,7 +268,7 @@ func (s *OrderService) CheckIn(ctx context.Context, userID, eventID string, p *d
 		return nil, shared.NewAppError("already_checked_in", "This ticket has already been checked in.", http.StatusConflict)
 	case "forbidden":
 		return nil, shared.NewAppError("forbidden", "You can only check in tickets for your own events.", http.StatusForbidden)
-	default: // not_found
+	default:
 		return nil, shared.NewAppError("invalid_code", "No matching ticket was found.", http.StatusNotFound)
 	}
 }

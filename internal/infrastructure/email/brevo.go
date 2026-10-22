@@ -11,18 +11,12 @@ import (
 	"time"
 )
 
-// BrevoClient sends transactional emails via the Brevo v3 API.
-//
-// Sender model: the verified technical address (daggi.x02@gmail.com) is the
-// From, branded with the display name; the user-facing address
-// (event.nua@gmail.com) is the reply-to. This is display-name/address
-// masking, fully compliant with Brevo's terms.
 type BrevoClient struct {
 	apiKey       string
 	baseURL      string
 	senderName   string
-	senderEmail  string // verified technical sender
-	replyToEmail string // user-facing address
+	senderEmail  string
+	replyToEmail string
 	httpClient   *http.Client
 }
 
@@ -98,8 +92,6 @@ func (c *BrevoClient) Send(ctx context.Context, m Message) (string, error) {
 	return "", &BrevoError{Status: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
 }
 
-// BrevoError carries the HTTP status so the worker can decide whether a
-// retry is worthwhile (429/5xx retryable; 4xx not).
 type BrevoError struct {
 	Status int
 	Body   string
@@ -109,7 +101,6 @@ func (e *BrevoError) Error() string {
 	return fmt.Sprintf("brevo api returned %d: %s", e.Status, e.Body)
 }
 
-// Retryable reports whether the failure is transient.
 func (e *BrevoError) Retryable() bool {
 	return e.Status == http.StatusTooManyRequests || e.Status >= 500
 }

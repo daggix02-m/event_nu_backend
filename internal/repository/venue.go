@@ -89,7 +89,6 @@ func (r *VenueRepository) ListActive(ctx context.Context, limit, offset int) ([]
 	return venues, rows.Err()
 }
 
-// CountActive returns the total number of active venues.
 func (r *VenueRepository) CountActive(ctx context.Context) (int, error) {
 	var total int
 	err := r.q(ctx).QueryRow(ctx, `
@@ -101,9 +100,6 @@ func (r *VenueRepository) CountActive(ctx context.Context) (int, error) {
 	return total, nil
 }
 
-// adminVenueClause builds the admin venue-list WHERE clause. q matches name,
-// address or city (case-insensitive substring); status is a validated
-// venue_status at the service boundary.
 func adminVenueClause(q, status string) (string, []any) {
 	conds := []string{"deleted_at IS NULL"}
 	args := []any{}
@@ -118,9 +114,6 @@ func adminVenueClause(q, status string) (string, []any) {
 	return strings.Join(conds, " AND "), args
 }
 
-// ListAdmin returns venues matching the optional q/status filters, newest
-// first. Unlike ListActive there is no active-only restriction; the admin sees
-// suspended venues too.
 func (r *VenueRepository) ListAdmin(ctx context.Context, q, status string, limit, offset int) ([]*domain.Venue, error) {
 	where, args := adminVenueClause(q, status)
 	rows, err := r.q(ctx).Query(ctx, `
@@ -146,7 +139,6 @@ func (r *VenueRepository) ListAdmin(ctx context.Context, q, status string, limit
 	return venues, rows.Err()
 }
 
-// CountAdmin counts venues matching the optional admin filters.
 func (r *VenueRepository) CountAdmin(ctx context.Context, q, status string) (int, error) {
 	where, args := adminVenueClause(q, status)
 	var total int

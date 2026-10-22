@@ -205,10 +205,10 @@ func emailFromBody(r *http.Request) string {
 	if err != nil {
 		return ""
 	}
-	// Restore the body for the handler regardless of parse success.
+
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	if len(body) > maxAccountKeyBodyBytes {
-		return "" // oversized body: the handler rejects it anyway
+		return ""
 	}
 	var payload struct {
 		Email string `json:"email"`

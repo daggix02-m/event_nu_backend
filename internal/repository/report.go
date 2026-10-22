@@ -42,8 +42,6 @@ func scanReport(row pgx.Row) (*domain.Report, error) {
 	return &r, nil
 }
 
-// reportQueueColumns aliases reports as `r` and joins users so the admin queue
-// listing can render the reporter's identity (username/email/avatar).
 const reportQueueColumns = `r.id, r.reporter_user_id, r.entity_type, r.entity_id, r.reason_code, COALESCE(r.description, '') AS description, r.status, r.resolution, r.resolved_at, r.created_at, r.updated_at, u.username, u.email, u.photo_url`
 
 func scanReportQueueItem(row pgx.Row) (*domain.Report, error) {
@@ -93,8 +91,6 @@ func (r *ReportRepository) CountAll(ctx context.Context) (int, error) {
 	return total, nil
 }
 
-// Resolve closes a report as dismissed/resolved. Returns ErrNotFound when the
-// report does not exist or was already resolved.
 func (r *ReportRepository) Resolve(ctx context.Context, id, resolution string) (*domain.Report, error) {
 	return scanReport(r.q(ctx).QueryRow(ctx, `
 		UPDATE reports SET
@@ -114,7 +110,7 @@ func (r *ReportRepository) Create(ctx context.Context, rep *domain.Report) (*dom
 	if err != nil {
 		return nil, fmt.Errorf("insert report: %w", err)
 	}
-	// Transition the target to 'under_review' only — never auto-hide.
+
 	if _, err := tx.Exec(ctx, `SELECT mark_target_reported($1, $2)`, rep.EntityType, rep.EntityID); err != nil {
 		return nil, fmt.Errorf("mark target reported: %w", err)
 	}

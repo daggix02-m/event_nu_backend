@@ -44,7 +44,6 @@ func (h *MomentHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusCreated, toMomentDTO(moment))
 }
 
-// List returns the paginated moments gallery for a published event.
 func (h *MomentHandlers) List(w http.ResponseWriter, r *http.Request) {
 	eventID, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -72,7 +71,6 @@ func (h *MomentHandlers) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Delete removes a moment. Own moments by anyone; admins may remove any.
 func (h *MomentHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -91,7 +89,6 @@ func (h *MomentHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// ListAttendees returns the paginated public_rsvp attendee directory.
 func (h *MomentHandlers) ListAttendees(w http.ResponseWriter, r *http.Request) {
 	eventID, ok := ParseUUIDParam(r, "id")
 	if !ok {

@@ -41,8 +41,6 @@ func (r *SessionRepository) Create(ctx context.Context, s *domain.Session) error
 	return nil
 }
 
-// GetActiveByRefreshHash returns a non-revoked, non-expired session for a
-// hashed refresh token.
 func (r *SessionRepository) GetActiveByRefreshHash(ctx context.Context, refreshHash string) (*domain.Session, error) {
 	row := r.q(ctx).QueryRow(ctx, `
 		SELECT id, user_id, refresh_hash, user_agent, ip_hash, device_name, expires_at, revoked_at, created_at, updated_at
@@ -95,8 +93,6 @@ func (r *SessionRepository) Revoke(ctx context.Context, refreshHash string) erro
 	return nil
 }
 
-// RevokeUserSessions revokes all active sessions for a user (used on logout-all
-// or account actions).
 func (r *SessionRepository) RevokeUserSessions(ctx context.Context, userID string) error {
 	_, err := r.q(ctx).Exec(ctx, `
 		UPDATE auth_sessions SET revoked_at = now(), updated_at = now()

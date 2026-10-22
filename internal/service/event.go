@@ -14,9 +14,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/validator"
 )
 
-// The stores below are the repository surfaces EventService depends on, kept
-// as interfaces (mirroring AuthService.userStore) so unit tests can stub them
-// without a database. The concrete repositories satisfy them implicitly.
 type eventStore interface {
 	GetByID(ctx context.Context, id string) (*domain.Event, error)
 	Create(ctx context.Context, e *domain.Event) (*domain.Event, error)
@@ -43,8 +40,6 @@ type categoryStore interface {
 	List(ctx context.Context) ([]*domain.Category, error)
 }
 
-// mediaCheckStore lets EventService verify organizer-attached media on event
-// updates (owned, correct kind, fully processed).
 type mediaCheckStore interface {
 	GetAssetByID(ctx context.Context, id string) (*domain.MediaAsset, error)
 }
@@ -62,9 +57,6 @@ func NewEventService(events eventStore, venues venueStore, cats categoryStore, o
 	return &EventService{events: events, venues: venues, cats: cats, orgs: orgs}
 }
 
-// SetMediaStore wires the service that validates organizer-attached media.
-// Nil-safe (no media attachment validation when not wired), mirroring the
-// SetNotifier pattern.
 func (s *EventService) SetMediaStore(media mediaCheckStore) {
 	s.media = media
 }
@@ -76,7 +68,6 @@ func (s *EventService) SetDomainEventStore(store domain.DomainEventWriter) {
 	s.store = store
 }
 
-// RequireOrganizer resolves the caller's active organizer, or a 403.
 func (s *EventService) RequireOrganizer(ctx context.Context, userID string) (*domain.Organizer, error) {
 	org, err := s.orgs.GetOrganizerByOwner(ctx, userID)
 	if err != nil {
@@ -91,7 +82,6 @@ func (s *EventService) RequireOrganizer(ctx context.Context, userID string) (*do
 	return org, nil
 }
 
-// CreateVenue registers a venue owned by the caller's organizer.
 func (s *EventService) CreateVenue(ctx context.Context, userID string, v *domain.Venue) (*domain.Venue, error) {
 	org, err := s.RequireOrganizer(ctx, userID)
 	if err != nil {
@@ -111,7 +101,6 @@ func (s *EventService) CreateVenue(ctx context.Context, userID string, v *domain
 	return s.venues.Create(ctx, v)
 }
 
-// PageResult holds a page of items plus total count.
 type PageResult[T any] struct {
 	Items []T
 	Total int
@@ -134,7 +123,6 @@ func (s *EventService) ListCategories(ctx context.Context) ([]*domain.Category, 
 	return s.cats.List(ctx)
 }
 
-// CreateEvent creates a draft event for the caller's organizer.
 func (s *EventService) CreateEvent(ctx context.Context, userID string, e *domain.Event) (*domain.Event, error) {
 	org, err := s.RequireOrganizer(ctx, userID)
 	if err != nil {
@@ -148,7 +136,6 @@ func (s *EventService) CreateEvent(ctx context.Context, userID string, e *domain
 	return s.events.Create(ctx, e)
 }
 
-// UpdateEvent updates an event the caller's organizer owns.
 func (s *EventService) UpdateEvent(ctx context.Context, userID, eventID string, e *domain.Event) (*domain.Event, error) {
 	org, err := s.RequireOrganizer(ctx, userID)
 	if err != nil {
@@ -181,8 +168,6 @@ func (s *EventService) UpdateEvent(ctx context.Context, userID, eventID string, 
 	return s.events.Update(ctx, e)
 }
 
-// requireMedia validates that a media asset is owned by the caller, of the
-// required kind and fully processed (nil-safe: no-op without a wired store).
 func (s *EventService) requireMedia(ctx context.Context, userID, mediaID, kind string) error {
 	if s.media == nil {
 		return shared.NewAppError("media_unavailable", "Media attachments are not available.", http.StatusUnprocessableEntity)
@@ -206,8 +191,6 @@ func (s *EventService) requireMedia(ctx context.Context, userID, mediaID, kind s
 	return nil
 }
 
-// Publish transitions a draft event to published. Requires a venue (the spec:
-// a published event points to a valid location).
 func (s *EventService) Publish(ctx context.Context, userID, eventID string) (*domain.Event, error) {
 	org, err := s.RequireOrganizer(ctx, userID)
 	if err != nil {
@@ -251,7 +234,7 @@ func (s *EventService) emitPublished(ctx context.Context, e *domain.Event, organ
 		"organizer_id": organizerID,
 		"published_at": time.Now().UTC().Format(time.RFC3339),
 	})
-	if err != nil { // constant map of fixed-size values; cannot fail in practice
+	if err != nil {
 		return err
 	}
 	ev := domain.DomainEvent{
@@ -283,9 +266,6 @@ func (s *EventService) ListEvents(ctx context.Context, filters domain.EventFilte
 	return PageResult[*domain.Event]{Items: items, Total: total}, nil
 }
 
-// ListMyEvents returns the caller's organizer's events across all lifecycle
-// statuses (including drafts), filtered by optional status, ordered newest starts_at first.
-// If the caller has no organizer, returns an empty PageResult (no error).
 func (s *EventService) ListMyEvents(ctx context.Context, userID, status string, page, limit int) (PageResult[*domain.Event], error) {
 	org, err := s.orgs.GetOrganizerByOwner(ctx, userID)
 	if err != nil {

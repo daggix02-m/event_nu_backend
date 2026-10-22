@@ -20,7 +20,6 @@ func NewDeviceHandlers(app *api.Application, devices *service.DeviceService) *De
 	return &DeviceHandlers{app: app, devices: devices}
 }
 
-// Register upserts the caller's device token for push delivery.
 func (h *DeviceHandlers) Register(w http.ResponseWriter, r *http.Request) {
 	var req dto.DeviceRequest
 	if err := shared.DecodeJSON(w, r, &req); err != nil {
@@ -49,7 +48,6 @@ func (h *DeviceHandlers) Deregister(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, dto.DeviceDeleteResult{Deleted: true})
 }
 
-// List returns the caller's registered devices.
 func (h *DeviceHandlers) List(w http.ResponseWriter, r *http.Request) {
 	devices, err := h.devices.List(r.Context(), middleware.UserID(r.Context()))
 	if err != nil {

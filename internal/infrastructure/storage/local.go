@@ -21,12 +21,6 @@ import (
 // driven port (hexagonal: adapters depend on ports, never the reverse).
 var _ domain.ObjectStore = (*Local)(nil)
 
-// Local is a filesystem-backed ObjectStore for development and tests. Objects
-// live under dir/<key>; PublicReadURL points at the API's /media/objects route
-// (mounted in cmd/api when the provider is local), and PresignUpload returns a
-// local PUT URL the client can upload to via that same route. It deliberately
-// ignores size limits on upload (the route enforces them) and is not intended
-// for production.
 type Local struct {
 	dir        string
 	publicBase string
@@ -38,8 +32,6 @@ func NewLocal(dir, publicBase string) *Local {
 
 func (l *Local) Bucket() string { return "local" }
 
-// ObjectPath maps a storage key to the local file path. Keys are
-// server-generated (uuid-bounded), so path.Join is safe here.
 func (l *Local) ObjectPath(key string) string {
 	return filepath.Join(l.dir, filepath.FromSlash(key))
 }
@@ -92,9 +84,6 @@ func (l *Local) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-// ServeObject streams a stored object (GET /media/objects/{key...}). Keys are
-// server-generated; this is a dev/test-only route (the local provider is never
-// used in production).
 func (l *Local) ServeObject(w http.ResponseWriter, r *http.Request) {
 	key, err := l.safeKey(r)
 	if err != nil {
@@ -115,8 +104,6 @@ func (l *Local) ServeObject(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, path.Base(key), st.ModTime(), f)
 }
 
-// StoreObject persists an uploaded object (PUT /media/objects/{key...}),
-// enforcing the configured maximum body size.
 func (l *Local) StoreObject(maxBytes int64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key, err := l.safeKey(r)
@@ -136,9 +123,6 @@ func (l *Local) StoreObject(maxBytes int64) http.HandlerFunc {
 	}
 }
 
-// safeKey extracts the wildcard path value ({key...} in a stdlib mux is the
-// catch-all "*" in chi) and rejects anything that would escape the store
-// directory.
 func (l *Local) safeKey(r *http.Request) (string, error) {
 	key := chi.URLParam(r, "*")
 	if key == "" {

@@ -21,8 +21,6 @@ const (
 	FormatJPEG = "jpeg"
 )
 
-// Spec is a named output size. MaxSize is the fit target in the longest
-// dimension at 1x density; density scales it (2x, 3x).
 type Spec struct {
 	Name    string
 	MaxSize int
@@ -34,7 +32,6 @@ var DefaultSpecs = []Spec{
 	{Name: "detail", MaxSize: 1280},
 }
 
-// Variant is one encoded output.
 type Variant struct {
 	Spec    string
 	Density int
@@ -44,7 +41,6 @@ type Variant struct {
 	Data    []byte
 }
 
-// Result is the outcome of processing one upload.
 type Result struct {
 	Width    int
 	Height   int
@@ -52,9 +48,6 @@ type Result struct {
 	Variants []Variant
 }
 
-// Process decodes src (contentType: image/jpeg, image/png, image/webp), fits
-// each spec, and encodes the variant set. The returned Format is what was
-// actually produced (webp, falling back to jpeg).
 func Process(r io.Reader, contentType string) (*Result, error) {
 	img, err := decode(r, contentType)
 	if err != nil {
@@ -92,12 +85,10 @@ func decode(r io.Reader, contentType string) (image.Image, error) {
 	if strings.HasPrefix(contentType, "image/webp") {
 		return xwebp.Decode(r)
 	}
-	// imaging registers png/jpeg/gif decoders internally.
+
 	return imaging.Decode(r, imaging.AutoOrientation(true))
 }
 
-// encode renders img to a lossy WebP at quality 80, falling back to JPEG if
-// libwebp is unavailable at runtime.
 func encode(img image.Image) ([]byte, string, error) {
 	if data, err := encodeWebP(img); err == nil {
 		return data, FormatWebP, nil

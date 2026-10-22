@@ -5,24 +5,13 @@ import (
 	"time"
 )
 
-// DomainEvent is one business fact that crossed a real lifecycle boundary —
-// the moment a consumer becomes interesting beyond its own request. The
-// envelope is core-owned (hexagonal): transports serialize the payload, the
-// names and ordering key are the contract.
 type DomainEvent struct {
-	// Name identifies the fact ("event.published"). Namespaced dot-lowercase
-	// so cross-language consumers can route on it.
 	Name string
 
-	// Key is the ordering/partitioning key — the aggregate ID, so every fact
-	// about one event lands on the same Kafka partition in order.
 	Key string
 
-	// OccurredAt is when the fact became true, not when it shipped.
 	OccurredAt time.Time
 
-	// Payload is a self-contained JSON body; consumers get the ID plus enough
-	// context to decide without a join when possible.
 	Payload []byte
 }
 

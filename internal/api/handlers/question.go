@@ -20,7 +20,6 @@ func NewQuestionHandlers(app *api.Application, question *service.QuestionService
 	return &QuestionHandlers{app: app, question: question}
 }
 
-// Create posts a question on a published event (any signed-in user).
 func (h *QuestionHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	eventID, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -40,9 +39,6 @@ func (h *QuestionHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusCreated, toQuestionDTO(q))
 }
 
-// List returns paginated questions for a published event, pinned first then by
-// vote count. Runs under optional auth so the viewer's voted_by_me is accurate
-// for signed-in callers and false for anonymous ones.
 func (h *QuestionHandlers) List(w http.ResponseWriter, r *http.Request) {
 	eventID, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -99,8 +95,6 @@ func (h *QuestionHandlers) RemoveUpvote(w http.ResponseWriter, r *http.Request) 
 	shared.WriteJSON(w, http.StatusOK, map[string]string{"status": "unvoted"})
 }
 
-// Pin pins/unpins a question (event organizer only). Accepts an optional body;
-// when pinned is absent the current state is toggled.
 func (h *QuestionHandlers) Pin(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -123,7 +117,6 @@ func (h *QuestionHandlers) Pin(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"status": "updated", "pinned": pinned})
 }
 
-// Answer sets (or clears with an empty body) the organizer's answer.
 func (h *QuestionHandlers) Answer(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {

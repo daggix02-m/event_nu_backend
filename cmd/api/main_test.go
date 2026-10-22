@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"google.golang.org/grpc"
 )
 
 func captureStdout(t *testing.T, fn func()) string {
@@ -78,5 +80,53 @@ func TestNewLoggerProductionSuppressesDebug(t *testing.T) {
 	})
 	if strings.TrimSpace(out) != "" {
 		t.Fatalf("expected no output at debug level in production, got: %q", out)
+	}
+}
+
+func TestGRPCBindIsWildcard(t *testing.T) {
+	cases := map[string]bool{
+		":50051":          true,  // bare host:port binds all interfaces
+		"0.0.0.0:50051":   true,  // explicit IPv4 wildcard
+		"[::]:50051":      true,  // explicit IPv6 wildcard
+		"127.0.0.1:50051": false, // loopback
+		"10.0.0.5:50051":  false, // private interface
+		"localhost:50051": false, // hostname
+		"50051":           false, // malformed — net.Listen must reject it
+		"":                false, // malformed
+	}
+	for addr, want := range cases {
+		if got := grpcBindIsWildcard(addr); got != want {
+			t.Errorf("grpcBindIsWildcard(%q) = %v, want %v", addr, got, want)
+		}
+	}
+}
+
+// TestReflectionRegistrationOnlyInDevelopment pins the data-leak guard:
+// reflection (which publishes the entire service contract) must be absent
+// from the server outside development, and present in it.
+func TestReflectionRegistrationOnlyInDevelopment(t *testing.T) {
+	reflectionService := func(srv *grpc.Server) bool {
+		for name := range srv.GetServiceInfo() {
+			if strings.HasPrefix(name, "grpc.reflection") {
+				return true
+			}
+		}
+		return false
+	}
+
+	production := grpc.NewServer()
+	captureStdout(t, func() {
+		registerGRPCReflection(production, "production", newLogger("production"))
+	})
+	if reflectionService(production) {
+		t.Fatal("reflection must not be registered in production")
+	}
+
+	development := grpc.NewServer()
+	captureStdout(t, func() {
+		registerGRPCReflection(development, "development", newLogger("development"))
+	})
+	if !reflectionService(development) {
+		t.Fatal("reflection must be registered in development")
 	}
 }

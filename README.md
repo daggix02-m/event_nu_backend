@@ -26,6 +26,20 @@ migrations     SQL migrations (goose)
 - PostgreSQL (Neon) — `DATABASE_URL` under the `app_user` role (RLS-guarded)
 - Brevo free account with transactional access enabled
 
+### gRPC transport (internal only)
+
+gRPC (`GRPC_ADDR`, opt-in) is an **internal, service-to-service** transport —
+not a second public API. It shares the same services and the same
+RLS/error-mapping rules as REST; public traffic must always use the chi HTTP
+routes (`/api/v1/...`). Operationally:
+
+- Bind a non-public interface (`127.0.0.1` in dev, an isolated Docker
+  network/private IP in deployment); the API logs a warning when the bind
+  spans all interfaces, because isolation is then entirely network-level.
+- Reflection (`grpcurl` discovery) is enabled only for
+  `APP_ENV=development`; other environments rely on the checked-in
+  `proto/eventnu/v1/events.proto`.
+
 ## Running integration tests
 
 `go test -race -p 1 ./...` (via `make test`) runs unit tests plus the
@@ -98,6 +112,37 @@ make migrate-up
 make ci
 ```
 
+### Testing with Postman (standalone)
+
+The backend runs and exposes its full API on its own — no frontend, no other
+repo, no third-party service needed (`EMAIL_PROVIDER=noop`,
+`PAYMENT_PROVIDER=noop`, `PUSH_PROVIDER=noop` are the defaults). Postman is
+the only client needed for manual endpoint testing.
+
+1. Bring up the database and the API (see the local workflow above:
+   `make db-up`, `make migrate-up`, then `make run`).
+2. Import `postman/eventnu.postman_collection.json` and
+   `postman/local.postman_environment.json` (Postman → Import).
+3. Select the **Event Nu — local standalone** environment and run the folders
+   top-down: Health → Auth → reference data → organizer setup → catalog →
+   engagement. Login/refresh responses auto-populate the token variables, so
+   protected requests "just work" after Login.
+4. The organizer/admin path: creating venues/events requires an approved
+   organizer. The collection uses the admin shortcut
+   `POST /api/v1/admin/organizers`, which needs the caller to be admin.
+   Admin is not seeded: promote once via SQL (owner connection
+   `DATABASE_ADMIN_URL`), e.g.
+   `psql "$DATABASE_ADMIN_URL" -c "UPDATE users SET role='admin' WHERE email='tester@example.com';"`
+   Admin middleware re-verifies the role from the database on every request,
+   so no re-login is needed after promoting.
+5. Token rotation, pagination, idempotency (`Idempotency-Key: {{$guid}}`
+   header), 429 rate limiting (re-run Login rapidly), and 404/400 error
+   contracts are all observable through the collection.
+
+Note: `POST /api/v1/auth/verify` cannot complete offline — with
+`EMAIL_PROVIDER=noop` the 6-digit code is stored hashed and only leaves
+through a real email provider. Nothing in the tested flow blocks on it.
+
 ## Configuration
 
 `.env` lives at the repo root. See `.env.example` for the template.
@@ -105,6 +150,7 @@ make ci
 | Variable | Purpose |
 |---|---|
 | `APP_ENV`, `PORT` | Runtime environment and HTTP port |
+| `GRPC_ADDR` | Internal gRPC transport bind (e.g. `127.0.0.1:50051`); unset = REST-only |
 | `DATABASE_URL` | API/worker connection (transactions set RLS role; worker presets `service`) |
 | `DATABASE_ADMIN_URL` | Migration/owner connection |
 | `JWT_SECRET` | HMAC secret; `JWT_EXPIRY` (default `15m`), `REFRESH_TOKEN_EXPIRY` (default `30d`) |

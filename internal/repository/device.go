@@ -60,7 +60,6 @@ func (r *DeviceRepository) Delete(ctx context.Context, userID, id string) error 
 	return nil
 }
 
-// ListByUser returns the caller's devices, newest first.
 func (r *DeviceRepository) ListByUser(ctx context.Context, userID string) ([]*domain.Device, error) {
 	rows, err := r.q(ctx).Query(ctx, `
 		SELECT `+deviceColumns+`

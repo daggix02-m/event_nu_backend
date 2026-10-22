@@ -22,7 +22,6 @@ func SetRLSContext(ctx context.Context, pool *pgxpool.Pool, userID, role string)
 	return nil
 }
 
-// SetRLSContextTx applies the app context on an existing transaction.
 func SetRLSContextTx(ctx context.Context, q Querier, userID, role string) error {
 	_, err := q.Exec(ctx, `
 		SELECT set_config('app.user_id', $1, true),

@@ -10,8 +10,6 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/validator"
 )
 
-// reportStore records the report row and applies the under_review moderation
-// transition.
 type reportStore interface {
 	Create(ctx context.Context, rep *domain.Report) (*domain.Report, error)
 }

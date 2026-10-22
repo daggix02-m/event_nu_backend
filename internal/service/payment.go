@@ -11,14 +11,12 @@ import (
 	"github.com/daggix02-m/event_nu_backend/internal/shared"
 )
 
-// paymentOrderStore is the order surface PaymentService needs.
 type paymentOrderStore interface {
 	GetOrderByID(ctx context.Context, orderID string) (*domain.Order, error)
 	ConfirmPaid(ctx context.Context, orderID, provider, providerRef string) (*domain.Order, []*domain.Ticket, error)
 	FailPayment(ctx context.Context, orderID, provider, providerRef string) error
 }
 
-// paymentLedgerStore is the payments-ledger surface PaymentService needs.
 type paymentLedgerStore interface {
 	RecordPending(ctx context.Context, p *domain.Payment) error
 	UpsertFromWebhook(ctx context.Context, p *domain.Payment, rawBody []byte) error
@@ -28,17 +26,15 @@ type paymentUserStore interface {
 	GetByID(ctx context.Context, id string) (*domain.User, error)
 }
 
-// PaymentService starts provider checkouts and applies provider webhook
-// outcomes to orders + the payments ledger.
 type PaymentService struct {
 	orders        paymentOrderStore
 	payments      paymentLedgerStore
 	users         paymentUserStore
 	provider      domain.PaymentProvider
 	notify        Notifier
-	callbackURL   string // the provider POSTs outcomes here (this server's webhook)
-	returnURL     string // the buyer lands here after the provider checkout
-	webhookSecret string // verifies the provider's signature headers
+	callbackURL   string
+	returnURL     string
+	webhookSecret string
 }
 
 func NewPaymentService(orders paymentOrderStore, payments paymentLedgerStore, users paymentUserStore,
@@ -55,16 +51,8 @@ func NewPaymentService(orders paymentOrderStore, payments paymentLedgerStore, us
 	}
 }
 
-// ProviderName exposes the active provider key (used by handlers that don't want
-// to reach into service internals).
 func (s *PaymentService) ProviderName() string { return s.provider.Name() }
 
-// Initiate opens a provider checkout for a fresh pending order and opens the
-// payment-ledger row. Returns (nil, nil) when no provider is configured
-// (PAYMENT_PROVIDER=noop in local dev/tests): the order is returned without a
-// redirect and the buyer can cancel it. On provider failure an AppError (502)
-// is returned; the caller's request transaction — which also created the order
-// and its reservations — is rolled back, so nothing leaks.
 func (s *PaymentService) Initiate(ctx context.Context, order *domain.Order) (*domain.PaymentInit, error) {
 	if s.provider.Name() == "noop" {
 		return nil, nil
@@ -99,8 +87,6 @@ func (s *PaymentService) Initiate(ctx context.Context, order *domain.Order) (*do
 		return nil, err
 	}
 
-	// ProviderRef is the single stable key every component keys on: the order
-	// id = tx_ref = the ledger's provider_payment_id = orders.provider_ref.
 	return &domain.PaymentInit{
 		Provider:    s.provider.Name(),
 		ProviderRef: order.ID,
@@ -108,25 +94,16 @@ func (s *PaymentService) Initiate(ctx context.Context, order *domain.Order) (*do
 	}, nil
 }
 
-// WebhookResult summarises how a provider webhook event was handled.
 type WebhookResult struct {
 	OrderID string
-	Status  string // "paid" | "failed" | "pending"
+	Status  string
 }
 
-// HandleWebhook processes a provider webhook event. The raw body is required so
-// the signature can be verified over exactly what the provider signed. Returns
-// AppErrors for client problems (bad signature 401, malformed payload 400,
-// unknown order 404) and raw errors for provider-verify failures (the provider
-// will retry them). Runs inside the webhook request transaction (privileged
-// 'service' role) so the order state change commits atomically.
 func (s *PaymentService) HandleWebhook(ctx context.Context, rawBody []byte, signatures ...string) (WebhookResult, error) {
 	if !domain.SignatureValid(s.webhookSecret, rawBody, signatures...) {
 		return WebhookResult{}, shared.NewAppError("invalid_signature", "Webhook signature verification failed.", http.StatusUnauthorized)
 	}
 
-	// Authority comes from re-querying the provider (Chapa: "always re-query
-	// our API to verify"), never from trusting the event body's own status.
 	txRef, ok := parseWebhookTxRef(rawBody)
 	if !ok {
 		return WebhookResult{}, shared.NewAppError("invalid_payload", "Webhook payload is missing the transaction reference.", http.StatusBadRequest)
@@ -143,7 +120,7 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, rawBody []byte, sign
 	case domain.StatusFailed:
 		return s.applyFailure(ctx, txRef, verify, rawBody)
 	default:
-		// pending/authorized — no state change yet; await a later event.
+
 		return WebhookResult{OrderID: txRef, Status: "pending"}, nil
 	}
 }
@@ -171,13 +148,9 @@ func (s *PaymentService) applySuccess(ctx context.Context, txRef string, rawBody
 		return WebhookResult{}, payErr
 	}
 
-	// Fan-out is best-effort: order confirmation must never fail the webhook.
-	// notify_user validates p_type against the notification_type enum, so we
-	// reuse the existing 'ticket' value rather than inventing a new one.
 	if err := s.notify.NotifyUser(ctx, order.UserID, "ticket", "Payment confirmed",
 		"Your payment was confirmed. Your tickets are ready in your wallet."); err != nil {
-		// A failed notification must not roll back the payment confirmation;
-		// without a logger there's nowhere to record it yet.
+
 		_ = err
 	}
 
@@ -197,10 +170,6 @@ func (s *PaymentService) applyFailure(ctx context.Context, txRef string, verify 
 		return WebhookResult{}, err
 	}
 
-	// The failed path reached here only for a pending order; its row carries the
-	// authoritative amount/currency for the ledger (the trigger forbids a
-	// currency mismatch). Fall back to provider verify output when the order is
-	// unavailable.
 	amount := verify.AmountMinor
 	currency := verify.Currency
 	if order, oerr := s.orders.GetOrderByID(ctx, txRef); oerr == nil {
@@ -211,8 +180,7 @@ func (s *PaymentService) applyFailure(ctx context.Context, txRef string, verify 
 			currency = order.Currency
 		}
 	} else if currency == "" {
-		// Cannot satisfy the currency trigger — leave the ledger without a row
-		// rather than write garbage. The order itself is already failed.
+
 		return WebhookResult{OrderID: txRef, Status: "failed"}, nil
 	}
 
@@ -230,9 +198,6 @@ func (s *PaymentService) applyFailure(ctx context.Context, txRef string, verify 
 	return WebhookResult{OrderID: txRef, Status: "failed"}, nil
 }
 
-// parseWebhookTxRef extracts the transaction reference from a Chapa webhook
-// payload. Chapa names it "tx_ref" in the event body; common aliases in the
-// wild are accepted too.
 func parseWebhookTxRef(raw []byte) (string, bool) {
 	var body struct {
 		TxRef  string `json:"tx_ref"`

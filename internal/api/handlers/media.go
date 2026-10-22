@@ -20,9 +20,6 @@ func NewMediaHandlers(app *api.Application, media *service.MediaService) *MediaH
 	return &MediaHandlers{app: app, media: media}
 }
 
-// CreateUploadIntent validates the caller's upload and hands back a presigned
-// PUT URL. No bytes move through the API; the client uploads directly to
-// storage, then calls CompleteUpload.
 func (h *MediaHandlers) CreateUploadIntent(w http.ResponseWriter, r *http.Request) {
 	var req dto.UploadIntentRequest
 	if err := shared.DecodeJSON(w, r, &req); err != nil {
@@ -43,8 +40,6 @@ func (h *MediaHandlers) CreateUploadIntent(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// CompleteUpload marks an owned, pending upload as processing and enqueues the
-// worker job.
 func (h *MediaHandlers) CompleteUpload(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
@@ -79,7 +74,6 @@ func (h *MediaHandlers) GetMedia(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, out)
 }
 
-// DeleteMedia soft-deletes an owned asset (owner-only).
 func (h *MediaHandlers) DeleteMedia(w http.ResponseWriter, r *http.Request) {
 	id, ok := ParseUUIDParam(r, "id")
 	if !ok {
