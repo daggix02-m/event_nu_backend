@@ -40,6 +40,17 @@ routes (`/api/v1/...`). Operationally:
   `APP_ENV=development`; other environments rely on the checked-in
   `proto/eventnu/v1/events.proto`.
 
+## Production
+
+The deployment bundle lives in `deploy/`: `docker-compose.prod.yml` (nginx TLS
+front, api, worker, vault, single-node Kafka, one-shot migrate job), a runbook
+in `deploy/runbook.md`, and `deploy/env.production.example` as the .env
+template. Secrets do **not** live in `deploy/.env`: they live in the Vault KV
+record `secret/eventnu` (brought up in runbook §1 step 4); `.env` only carries
+the Vault AppRole credentials and non-secret configuration. Start with the
+runbook for both first deploy and day-2 operations (updates, rollbacks,
+certificate renewal, backups, secret rotation).
+
 ## Running integration tests
 
 `go test -race -p 1 ./...` (via `make test`) runs unit tests plus the
@@ -145,7 +156,11 @@ through a real email provider. Nothing in the tested flow blocks on it.
 
 ## Configuration
 
-`.env` lives at the repo root. See `.env.example` for the template.
+`.env` lives at the repo root (optional — every binary runs `godotenv.Load()`
+at startup, which only fills variables that are not already exported, so a
+value set in the shell/CI always wins over `.env`). See `.env.example` for
+the template; the deployment's `.env` lives in `deploy/` (see the Production
+section).
 
 | Variable | Purpose |
 |---|---|
@@ -155,6 +170,7 @@ through a real email provider. Nothing in the tested flow blocks on it.
 | `DATABASE_ADMIN_URL` | Migration/owner connection |
 | `JWT_SECRET` | HMAC secret; `JWT_EXPIRY` (default `15m`), `REFRESH_TOKEN_EXPIRY` (default `30d`) |
 | `TICKET_QR_SECRET` | HMAC key for ticket QR payloads (defaults to `JWT_SECRET`) |
+| `VAULT_ADDR` | Optional: pull the secret set from a Vault KV record at boot (deployment does this; `deploy/runbook.md` §1 step 4). Off when unset. `VAULT_KV_MOUNT` (default `secret`), `VAULT_KV_PATH` (default `eventnu`), `VAULT_ROLE_ID` + `VAULT_SECRET_ID` or `VAULT_SECRET_ID_FILE` authenticate via AppRole. Any Vault error aborts boot; an env var already set always wins over the Vault value |
 | `PAYMENT_PROVIDER` | `noop` (default) or `chapa` |
 | `CHAPA_SECRET_KEY` | Chapa API key (initialize/verify auth); required when `PAYMENT_PROVIDER=chapa` |
 | `CHAPA_API_BASE` | Chapa API root (default `https://api.chapa.co/v1`) |

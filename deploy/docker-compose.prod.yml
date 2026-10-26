@@ -1,0 +1,229 @@
+# Event Nu backend — production deployment (single VM, Docker Compose).
+#
+# Topology:
+#   nginx (TLS termination, ports 80/443) -> api:8080 (app image)
+#   worker        — same image, runs the outbox consumers + Kafka relay/fanout
+#   vault         — KV secrets server (file storage on a volume); api/worker
+#                   log in with AppRole at boot. Sealed until an operator
+#                   unseals it: runbook "Vault bring-up".
+#   kafka         — single-node KRaft broker, private to the compose network
+#   migrate       — one-shot goose run against the admin URL (profile: ops)
+#   certbot       — one-shot Let's Encrypt issuance/renewal (profile: tls)
+#
+# The stateful database is NOT here: production Postgres is Neon
+# (DATABASE_URL/DATABASE_ADMIN_URL in Vault). Backups are Neon's; the
+# runbook documents the local-dump drill.
+#
+# Secrets: the Vault KV record secret/eventnu (DATABASE_URL, JWT_SECRET,
+# provider keys, ...). deploy/.env only carries Vault credentials
+# (VAULT_ROLE_ID/VAULT_SECRET_ID) plus non-secret configuration; an
+# environment variable set in .env still wins over Vault (documented
+# precedence), so a value there is an operator override, not a second
+# store.
+#
+# Not started by default: migrate and certbot/. Both are profile-gated; the
+# runbook shows the exact commands.
+name: eventnu-prod
+
+services:
+  api:
+    image: ${IMAGE:-eventnu:latest}
+    command: ["/app/api"]
+    env_file:
+      - .env
+    environment:
+      APP_ENV: production
+      # Behind nginx: rate limiting and request logs read X-Forwarded-For,
+      # set by the proxy.
+      PORT: "8080"
+      # Vault: credentials (VAULT_ROLE_ID / VAULT_SECRET_ID) come from
+      # env_file; see the record semantics in the file header.
+      VAULT_ADDR: http://vault:8200
+      VAULT_KV_MOUNT: secret
+      VAULT_KV_PATH: eventnu
+    depends_on:
+      nginx:
+        condition: service_started
+      vault:
+        condition: service_started
+    expose:
+      - "8080"
+    ports:
+      # Ops-only loopback smoke-test port (default 8080; override with
+      # OPS_PORT where the host already serves something on it). The app
+      # speaks plain HTTP; nothing outside the VM may reach this mapping.
+      - "127.0.0.1:${OPS_PORT:-8080}:8080"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  worker:
+    image: ${IMAGE:-eventnu:latest}
+    command: ["/app/worker"]
+    env_file:
+      - .env
+    environment:
+      APP_ENV: production
+      VAULT_ADDR: http://vault:8200
+      VAULT_KV_MOUNT: secret
+      VAULT_KV_PATH: eventnu
+      KAFKA_BROKERS: kafka:9092   # empty/disabled in env -> delete this line to disable the relay
+    depends_on:
+      api:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      vault:
+        condition: service_started
+    restart: unless-stopped
+    # The image's /readyz HEALTHCHECK probes the API binary; the worker
+    # serves no HTTP. Loss of container is caught by restart policy and the
+    # API's /metrics; a worker cannot honestly declare "ready".
+    healthcheck:
+      disable: true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  # The apache/kafka image runs as uid 1000; named volumes start root-owned.
+  # The init container fixes ownership once, then exits, and the broker waits
+  # for it (without it: AccessDeniedException formatting the metadata dir).
+  kafka-init:
+    image: alpine:3.20
+    command: ["chown", "-R", "1000:1000", "/data"]
+    volumes:
+      - kafka_data:/data
+    restart: "no"
+
+  kafka:
+    image: apache/kafka:4.0.0
+    environment:
+      # Single-node KRaft: broker + controller in one process.
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Broker data (partitions): default is /tmp, which evaporates on
+      # restart. Pin it to the volume.
+      KAFKA_LOG_DIRS: /data
+    volumes:
+      - kafka_data:/data
+    healthcheck:
+      # bash + /dev/tcp survives image content differences (no nc here).
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/9092' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    expose:
+      - "9092"
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  # Secrets server. NOT auto-unsealed: a fresh VM boot leaves it sealed and
+  # api/worker fail fast until an operator unseals (runbook "Vault
+  # bring-up"). That is deliberate: unseal keys never live on this VM.
+  vault:
+    image: hashicorp/vault:2.2.1
+    cap_add:
+      - IPC_LOCK
+    command: ["server"]
+    environment:
+      # disable_mlock: mlock is denied on several hosts (docker ulimits) and
+      # crashes the server; the swap-protection gap is closed by running the
+      # VM without swap ("swapoff" in the first-deploy checklist). IPC_LOCK
+      # is kept so hosts that do allow mlock stay protected if you ever
+      # remove disable_mlock.
+      VAULT_LOCAL_CONFIG: >-
+        {"disable_mlock": true,
+         "storage": {"file": {"path": "/vault/file"}},
+         "listener": {"tcp": {"address": "0.0.0.0:8200", "tls_disable": 1}},
+         "api_addr": "http://vault:8200",
+         "ui": false}
+    # NOTE: 8200 serves plain HTTP. It is acceptable here because the port
+    # is only exposed on the Compose network (never published to the host);
+    # no traffic outside the VM can touch it. Revisit with TLS if the
+    # Vault ever becomes reachable beyond this VM.
+    volumes:
+      - vault_data:/vault/file
+    healthcheck:
+      # Unauthenticated; exit 1 while sealed is an expected pre-unseal state
+      # (restart policy is not tied to health, so this does not fight it).
+      test: ["CMD", "vault", "-address=http://127.0.0.1:8200", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    expose:
+      - "8200"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - cert_data:/etc/letsencrypt:ro
+      - webroot:/var/www/certbot:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  migrate:
+    image: ${IMAGE:-eventnu:latest}
+    profiles: ["ops"]
+    # SQL migrations are not baked into the image; run from the checkout on
+    # the VM so a schema step stays with its git revision. goose is a raw
+    # binary and does not read Vault; inject the admin URL per run from the
+    # operator terminal (runbook "Migrations"), e.g.:
+    #   docker compose --profile ops run --rm \
+    #     -e DATABASE_ADMIN_URL="$(vault kv get -field=DATABASE_ADMIN_URL secret/eventnu)" \
+    #     migrate up
+    env_file:
+      - .env
+    volumes:
+      - ../migrations:/migrations:ro
+    working_dir: /migrations
+    entrypoint: ["/bin/sh", "-c"]
+    # $$ is resolved by the container shell (not compose interpolation) so
+    # the URL can come from env_file OR a per-run `-e` injection from the
+    # operator's Vault client.
+    command: ["/app/goose postgres \"$$DATABASE_ADMIN_URL\" up"]
+
+volumes:
+  kafka_data:
+  vault_data:
+  cert_data:
+  webroot:

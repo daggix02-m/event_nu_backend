@@ -98,9 +98,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('register ok', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 409]));",
-                  "const body = pm.response.json();",
-                  "if (body.id) pm.environment.set('user_id', body.id);",
-                  "if (body.user && body.user.id) pm.environment.set('user_id', body.user.id);"
+                  "const body = pm.response.json(); const d = (body && typeof body === 'object' && body.data) ? body.data : body;",
+                  "if (d.id) pm.environment.set('user_id', d.id);",
+                  "if (d.user && d.user.id) pm.environment.set('user_id', d.user.id);"
                 ]
               }
             }
@@ -132,10 +132,10 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('login 200', () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "if (body.access_token) pm.collectionVariables.set('access_token', body.access_token);",
-                  "if (body.refresh_token) pm.collectionVariables.set('refresh_token', body.refresh_token);",
-                  "if (body.user && body.user.id) pm.environment.set('user_id', body.user.id);"
+                  "const body = pm.response.json(); const d = (body && typeof body === 'object' && body.data) ? body.data : body;",
+                  "if (d.access_token) { pm.environment.set('access_token', d.access_token); pm.collectionVariables.set('access_token', d.access_token); }",
+                  "if (d.refresh_token) { pm.environment.set('refresh_token', d.refresh_token); pm.collectionVariables.set('refresh_token', d.refresh_token); }",
+                  "if (d.user && d.user.id) pm.environment.set('user_id', d.user.id);"
                 ]
               }
             }
@@ -193,9 +193,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('refresh 200', () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "if (body.access_token) pm.collectionVariables.set('access_token', body.access_token);",
-                  "if (body.refresh_token) pm.collectionVariables.set('refresh_token', body.refresh_token);"
+                  "const body = pm.response.json(); const d = (body && typeof body === 'object' && body.data) ? body.data : body;",
+                  "if (d.access_token) { pm.environment.set('access_token', d.access_token); pm.collectionVariables.set('access_token', d.access_token); }",
+                  "if (d.refresh_token) { pm.environment.set('refresh_token', d.refresh_token); pm.collectionVariables.set('refresh_token', d.refresh_token); }"
                 ]
               }
             }
@@ -265,8 +265,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('categories 200', () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "const first = Array.isArray(body) ? body[0] : (body.data ? body.data[0] : null);",
+                  "const body = pm.response.json(); const d = (body && typeof body === 'object' && body.data) ? body.data : body;",
+                  "const first = Array.isArray(d) ? d[0] : null;",
                   "if (first && first.id) pm.environment.set('category_id', first.id);"
                 ]
               }
@@ -347,8 +347,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('apply ok', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 409]));",
-                  "const body = pm.response.json();",
-                  "if (body.id) pm.environment.set('application_id', body.id);"
+                  "const body = pm.response.json(); const d = (body && typeof body === 'object' && body.data) ? body.data : body;",
+                  "if (d.id) pm.environment.set('application_id', d.id);"
                 ]
               }
             }
@@ -381,8 +381,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('organizer created or exists', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 409]));",
-                  "const body = pm.response.json();",
-                  "if (body.id) pm.environment.set('organizer_id', body.id);"
+                  "const body = pm.response.json(); const d = (body && typeof body === 'object' && body.data) ? body.data : body;",
+                  "if (d.id) pm.environment.set('organizer_id', d.id);"
                 ]
               }
             }
@@ -436,8 +436,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('venue created', () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
-                  "const body = pm.response.json();",
-                  "if (body.id) pm.environment.set('venue_id', body.id);"
+                  "const body = pm.response.json(); const d = (body && typeof body === 'object' && body.data) ? body.data : body;",
+                  "if (d.id) pm.environment.set('venue_id', d.id);"
                 ]
               }
             }
@@ -471,8 +471,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('event created', () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
-                  "const body = pm.response.json();",
-                  "if (body.id) pm.environment.set('event_id', body.id);"
+                  "const body = pm.response.json(); const d = (body && typeof body === 'object' && body.data) ? body.data : body;",
+                  "if (d.id) pm.environment.set('event_id', d.id);"
                 ]
               }
             }

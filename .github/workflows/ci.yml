@@ -80,8 +80,24 @@ jobs:
       - name: build
         run: go build ./...
 
+      # Generated-code consistency: regenerate the gRPC transport with the
+      # pinned protoc (official release v35.1 — its version header is exactly
+      # what the committed files record) and pinned plugins, then compare
+      # byte-for-byte. Blocks PRs that edit a .proto without regenerating.
+      - name: install protoc
+        run: |
+          curl -sSL -o /tmp/protoc.zip \
+            https://github.com/protocolbuffers/protobuf/releases/download/v35.1/protoc-35.1-linux-x86_64.zip
+          unzip -q -o /tmp/protoc.zip -d /tmp/protoc
+
+      - name: check generated gRPC code
+        run: PATH="/tmp/protoc/bin:$PATH" scripts/check_protobuf.sh
+
       - name: lint
         run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
       - name: test
         # -timeout 30m matches the make ci gate: -p 1 runs the DB-backed

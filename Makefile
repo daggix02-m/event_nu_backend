@@ -8,7 +8,7 @@ EMAIL_PROVIDER ?= noop
 
 export DATABASE_ADMIN_URL DATABASE_URL JWT_SECRET EMAIL_PROVIDER
 
-.PHONY: run worker test vet build lint fmt migrate-up migrate-new db-up db-down tidy ci
+.PHONY: run worker test vet build lint fmt migrate-up migrate-new db-up db-down tidy ci proto proto-check vuln
 
 run:
 	go run ./cmd/api
@@ -35,6 +35,21 @@ fmt:
 
 tidy:
 	go mod tidy
+
+proto:
+	# Regenerates the gRPC transport code in place (pinned toolchain; needs
+	# the official protoc binary on PATH). See scripts/gen_protobuf.sh.
+	scripts/gen_protobuf.sh
+
+proto-check:
+	# Regenerates into a temp dir and compares byte-for-byte with the
+	# committed files. Same pinning as `proto`; CI runs this as a gate.
+	scripts/check_protobuf.sh
+
+vuln:
+	# Known-vulnerability triage against the module graph + call graph.
+	# Same command CI runs; exits non-zero on reachable findings.
+	go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
 migrate-up:
 	cd migrations && goose postgres "$$DATABASE_ADMIN_URL" up
@@ -65,6 +80,8 @@ ci:
 	go vet ./...
 	go build ./...
 	golangci-lint run ./...
+	# Dependency-vulnerability triage; same step as ci.yml.
+	go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 	# -timeout 30m: the DB-backed handlers suite runs against a shared remote
 	# dev DB whose published-event count grows on every run, pushing the page
 	# walk past go test's 20m ceiling; the same suite is fast against the local

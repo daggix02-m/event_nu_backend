@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -11,6 +12,11 @@ import (
 type Config struct {
 	AppEnv string
 	Port   string
+
+	// VaultStatus records what loadVaultSecrets did during this Load
+	// (zero value when VAULT_ADDR is unset). Observability, not secrets:
+	// it only ever carries counts.
+	Vault VaultStatus
 
 	GRPCAddr string
 
@@ -122,6 +128,13 @@ func parseDuration(v string) (time.Duration, error) {
 func Load() (Config, error) {
 	var cfg Config
 	var err error
+
+	// Secrets from Vault (no-op with VAULT_ADDR unset; fail-fast on any
+	// Vault error when set) BEFORE any env evaluation, so the "environment
+	// wins" precedence covers Vault-pulled values too.
+	if cfg.Vault, err = loadVaultSecrets(context.Background()); err != nil {
+		return Config{}, err
+	}
 
 	cfg.AppEnv = getEnv("APP_ENV", "development")
 	cfg.Port = getEnv("PORT", "8080")

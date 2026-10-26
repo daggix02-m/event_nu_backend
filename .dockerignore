@@ -1,0 +1,22 @@
+# Secrets and environment files — never in an image.
+.env
+.env.*
+!/.env.example
+
+# Key material / service accounts.
+*.pem
+*.p8
+*.p12
+*.pfx
+
+# Local dev/test state, docs, and CI — none of it belongs in the runtime
+# image (code is copied from the build context, so excluding this keeps the
+# build slim and the image free of credentials).
+.github/
+docs/
+migrations/
+postman/
+scripts/
+docker-compose.yml
+Makefile
+README.md
